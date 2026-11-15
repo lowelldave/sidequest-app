@@ -1,173 +1,303 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { clearImages, removeImages } from "./images";
+import { removeImages } from "./images";
 import { allocateDelivery } from "./restock";
-import { createEmpty, createSeed } from "./seed";
-import type { Expense, Quality, QualityStock, ShopData, Toy, Transaction } from "./types";
+import { createSeed } from "./seed";
+import { getSupabase } from "./supabase/client";
+import type {
+  Category,
+  Expense,
+  ExpenseCategory,
+  PaymentMethod,
+  Quality,
+  ShopData,
+  Toy,
+  Transaction,
+  TransactionType,
+} from "./types";
 
 /**
- * All shop data lives in the browser's localStorage under this key.
- * Components read it with `useShop()` and change it through the action
- * functions below, which persist and notify every subscriber.
+ * The shop's data lives in Supabase (Postgres). This module loads it once,
+ * keeps a copy in memory for the screens to read with `useShop()`, and exposes
+ * the action functions that change it.
+ *
+ * Actions update the in-memory copy straight away so the screen responds at
+ * once, then save to the database in the background. If a save fails, the
+ * error is shown (see `useSyncError`) and the data is reloaded from the
+ * database, which undoes the change on screen.
+ *
+ * Display preferences (currency, list/gallery view) are per-browser and stay
+ * in localStorage.
  */
-const STORAGE_KEY = "toyshop:data:v1";
 
-let state: ShopData | null = null;
+const SETTINGS_KEY = "toyshop:settings:v1";
+const DEFAULT_SETTINGS: ShopData["settings"] = { currency: "USD", inventoryView: "gallery" };
+
+let data: ShopData | null = null;
+/** Why the first load failed, if it did. */
+let loadError: string | null = null;
+/** The most recent failed save, shown until dismissed. */
+let syncError: string | null = null;
+let started = false;
+
 const listeners = new Set<() => void>();
-
-function isShopData(value: unknown): value is ShopData {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    Array.isArray(v.toys) &&
-    Array.isArray(v.transactions) &&
-    Array.isArray(v.expenses) &&
-    !!v.settings &&
-    typeof v.settings === "object"
-  );
-}
-
-/** Earlier versions used different quality names; map them to the current grades. */
-const LEGACY_QUALITY: Record<string, Quality> = {
-  Collector: "MISB",
-  Premium: "MIB",
-  Standard: "BIB",
-  Budget: "Loose",
-  "Pre-owned": "Loose",
-};
-
-/** Same for categories; the ones with no close match fold into Collectibles. */
-const LEGACY_CATEGORY: Record<string, Toy["category"]> = {
-  "Action Figures": "Figures",
-  "Dolls & Plush": "Plush",
-  "Building Sets": "Model Kits",
-  "Vehicles & RC": "Model Kits",
-  "Games & Puzzles": "Collectibles",
-  Educational: "Collectibles",
-  "Outdoor & Sports": "Collectibles",
-};
-
-/** Toys saved before qualities became a list had one quality with its own price, cost and stock. */
-type LegacyToy = Omit<Toy, "qualities" | "images"> & {
-  emoji?: string;
-  images?: string[];
-  quality?: string;
-  price?: number;
-  cost?: number;
-  stock?: number;
-  qualities?: QualityStock[];
-};
-
-function migrate(data: ShopData): ShopData {
-  const legacyToys = data.toys as unknown as LegacyToy[];
-  const outdated =
-    legacyToys.some(
-      (t) =>
-        !Array.isArray(t.qualities) ||
-        t.qualities.some((q) => (q.quality as string) in LEGACY_QUALITY) ||
-        (t.category as string) in LEGACY_CATEGORY ||
-        typeof t.manufacturer !== "string" ||
-        !Array.isArray(t.images),
-    ) ||
-    data.transactions.some(
-      (tx) => !tx.quality || (tx.quality as string) in LEGACY_QUALITY,
-    );
-  if (!outdated) return data;
-
-  const mapQuality = (q: string): Quality => LEGACY_QUALITY[q] ?? (q as Quality);
-
-  const toys = legacyToys.map((t): Toy => {
-    // `emoji` is the old stand-in for a picture; drop it.
-    const { quality, price, cost, stock, qualities, emoji, ...rest } = t;
-    void emoji;
-    return {
-      ...rest,
-      images: Array.isArray(rest.images) ? rest.images : [],
-      category: LEGACY_CATEGORY[rest.category as string] ?? rest.category,
-      // Toys saved before this field existed have none.
-      manufacturer: typeof rest.manufacturer === "string" ? rest.manufacturer : "",
-      qualities: Array.isArray(qualities)
-        ? qualities.map((q) => ({ ...q, quality: mapQuality(q.quality) }))
-        : [
-            {
-              quality: mapQuality(quality ?? "Loose"),
-              price: price ?? 0,
-              cost: cost ?? 0,
-              stock: stock ?? 0,
-            },
-          ],
-    };
-  });
-
-  // Older transactions don't say which quality they were for: use the toy's only quality.
-  const transactions = data.transactions.map((tx): Transaction => {
-    const raw = tx.quality as string | undefined;
-    const quality: Quality =
-      (raw && mapQuality(raw)) ||
-      toys.find((t) => t.id === tx.toyId)?.qualities[0]?.quality ||
-      "Loose";
-    return { ...tx, quality };
-  });
-
-  return { ...data, toys, transactions };
-}
-
-function read(): ShopData {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (isShopData(parsed)) return migrate(parsed);
-    }
-  } catch {
-    // Unreadable or blocked storage: fall through to sample data.
-  }
-  return createSeed();
-}
-
-function commit(next: ShopData) {
-  state = next;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Storage full or blocked: keep working in memory for this session.
-  }
-  listeners.forEach((l) => l());
-}
+const emit = () => listeners.forEach((l) => l());
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  // Pick up changes made in another tab.
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) {
-      state = null;
-      listener();
-    }
-  };
-  window.addEventListener("storage", onStorage);
+  if (!started) {
+    started = true;
+    void load();
+  }
   return () => {
     listeners.delete(listener);
-    window.removeEventListener("storage", onStorage);
   };
 }
 
-function getSnapshot(): ShopData {
-  if (!state) state = read();
-  return state;
-}
-
-function getServerSnapshot(): ShopData | null {
-  return null;
-}
-
-/** Returns null while prerendering / before hydration, then the stored data. */
+/** Null while loading (or if loading failed, see `useLoadError`), then the shop's data. */
 export function useShop(): ShopData | null {
-  return useSyncExternalStore<ShopData | null>(subscribe, getSnapshot, getServerSnapshot);
+  return useSyncExternalStore<ShopData | null>(
+    subscribe,
+    () => data,
+    () => null,
+  );
 }
 
-function newId(): string {
-  return crypto.randomUUID();
+/** A message if the data couldn't be loaded at all, otherwise null. */
+export function useLoadError(): string | null {
+  return useSyncExternalStore<string | null>(
+    subscribe,
+    () => loadError,
+    () => null,
+  );
+}
+
+/** A message if a recent change couldn't be saved, otherwise null. */
+export function useSyncError(): string | null {
+  return useSyncExternalStore<string | null>(
+    subscribe,
+    () => syncError,
+    () => null,
+  );
+}
+
+export function dismissSyncError() {
+  syncError = null;
+  emit();
+}
+
+/** Tries loading again after a failed load. */
+export function retryLoad() {
+  loadError = null;
+  emit();
+  void load();
+}
+
+// ---------- Settings (per browser) ----------
+
+function readSettings(): ShopData["settings"] {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ShopData["settings"]>) };
+  } catch {
+    // Unreadable or blocked storage: use the defaults.
+  }
+  return DEFAULT_SETTINGS;
+}
+
+export function updateSettings(patch: Partial<ShopData["settings"]>) {
+  if (!data) return;
+  const settings = { ...data.settings, ...patch };
+  data = { ...data, settings };
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Blocked storage: the choice still applies until the page reloads.
+  }
+  emit();
+}
+
+// ---------- Loading ----------
+
+type ToyRow = {
+  id: string;
+  name: string;
+  sku: string;
+  manufacturer: string;
+  category: Category;
+  images: string[];
+  reorder_level: number;
+  notes: string;
+  created_at: string;
+  toy_qualities: { quality: Quality; price: number; cost: number; stock: number; position: number }[];
+};
+
+type TransactionRow = {
+  id: string;
+  date: string;
+  type: TransactionType;
+  toy_id: string | null;
+  toy_name: string;
+  quality: Quality;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+  payment: PaymentMethod;
+  note: string;
+  delivery: number | null;
+  batch_id: string | null;
+};
+
+type ExpenseRow = {
+  id: string;
+  date: string;
+  category: ExpenseCategory;
+  vendor: string;
+  description: string;
+  amount: number;
+};
+
+function toToy(row: ToyRow): Toy {
+  return {
+    id: row.id,
+    name: row.name,
+    sku: row.sku,
+    manufacturer: row.manufacturer,
+    category: row.category,
+    images: row.images ?? [],
+    qualities: [...row.toy_qualities]
+      .sort((a, b) => a.position - b.position)
+      .map((q) => ({
+        quality: q.quality,
+        price: Number(q.price),
+        cost: Number(q.cost),
+        stock: q.stock,
+      })),
+    reorderLevel: row.reorder_level,
+    notes: row.notes,
+    createdAt: row.created_at,
+  };
+}
+
+function toTransaction(row: TransactionRow): Transaction {
+  return {
+    id: row.id,
+    date: row.date,
+    type: row.type,
+    // Empty once the toy has been deleted; toyName still says what it was.
+    toyId: row.toy_id ?? "",
+    toyName: row.toy_name,
+    quality: row.quality,
+    quantity: row.quantity,
+    unitPrice: Number(row.unit_price),
+    amount: Number(row.amount),
+    payment: row.payment,
+    note: row.note,
+    ...(Number(row.delivery) > 0 ? { delivery: Number(row.delivery) } : {}),
+    ...(row.batch_id ? { batchId: row.batch_id } : {}),
+  };
+}
+
+function toExpense(row: ExpenseRow): Expense {
+  return {
+    id: row.id,
+    date: row.date,
+    category: row.category,
+    vendor: row.vendor,
+    description: row.description,
+    amount: Number(row.amount),
+  };
+}
+
+function errorText(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return /failed to fetch|networkerror|load failed/i.test(message)
+    ? "Couldn't reach the database. Check your internet connection."
+    : message;
+}
+
+/** Reads every row of a table. The API returns at most 1,000 rows per request, so this pages. */
+async function fetchAll<T>(
+  table: string,
+  columns: string,
+  orderBy: [column: string, ascending: boolean][],
+): Promise<T[]> {
+  const PAGE = 1000;
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    let query = getSupabase().from(table).select(columns);
+    for (const [column, ascending] of orderBy) query = query.order(column, { ascending });
+    const { data: page, error } = await query.range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...((page ?? []) as T[]));
+    if (!page || page.length < PAGE) return rows;
+  }
+}
+
+async function load() {
+  try {
+    const [toys, transactions, expenses] = await Promise.all([
+      fetchAll<ToyRow>("toys", "*, toy_qualities(*)", [
+        ["name", true],
+        ["id", true],
+      ]),
+      fetchAll<TransactionRow>("transactions", "*", [
+        ["date", false],
+        ["created_at", false],
+        ["id", true],
+      ]),
+      fetchAll<ExpenseRow>("expenses", "*", [
+        ["date", false],
+        ["created_at", false],
+        ["id", true],
+      ]),
+    ]);
+    data = {
+      toys: toys.map(toToy),
+      transactions: transactions.map(toTransaction),
+      expenses: expenses.map(toExpense),
+      settings: data?.settings ?? readSettings(),
+    };
+    loadError = null;
+  } catch (e) {
+    // With data already on screen, a failed refresh is reported as a save problem
+    // rather than replacing the whole screen with an error.
+    if (data) syncError = `Couldn't refresh from the database. ${errorText(e)}`;
+    else loadError = errorText(e);
+  }
+  emit();
+}
+
+// ---------- Saving ----------
+
+type Result = { error: { message: string } | null };
+
+/** Saves run one after another, in the order the changes were made. */
+let queue: Promise<void> = Promise.resolve();
+
+/**
+ * Applies a change on screen immediately, then saves it. If the save fails the
+ * error is shown and the data is reloaded, which reverts the change on screen.
+ */
+function change(optimistic: (d: ShopData) => ShopData, save: () => PromiseLike<Result>, failed: string) {
+  if (!data) return;
+  data = optimistic(data);
+  emit();
+  queue = queue.then(async () => {
+    let problem: string | null = null;
+    try {
+      const { error } = await save();
+      if (error) problem = error.message;
+    } catch (e) {
+      problem = errorText(e);
+    }
+    if (problem) {
+      syncError = `${failed} ${errorText(problem)}`;
+      emit();
+      await load();
+    }
+  });
 }
 
 function round2(n: number): number {
@@ -178,31 +308,57 @@ function round2(n: number): number {
 
 export type ToyInput = Omit<Toy, "id" | "createdAt">;
 
+function toyPayload(id: string, input: ToyInput) {
+  return {
+    id,
+    name: input.name,
+    sku: input.sku,
+    manufacturer: input.manufacturer,
+    category: input.category,
+    images: input.images,
+    reorder_level: input.reorderLevel,
+    notes: input.notes,
+    qualities: input.qualities,
+  };
+}
+
 /** Adds a toy to the inventory and returns it. */
-export function addToy(input: ToyInput, createdAt: string): Toy {
-  const s = getSnapshot();
-  const toy: Toy = { ...input, id: newId(), createdAt };
-  commit({ ...s, toys: [toy, ...s.toys] });
+export function addToy(input: ToyInput): Toy {
+  const toy: Toy = { ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+  change(
+    (d) => ({ ...d, toys: [toy, ...d.toys] }),
+    () => getSupabase().rpc("save_toy", { p_toy: { ...toyPayload(toy.id, input), created_at: toy.createdAt } }),
+    `Couldn't save "${input.name}".`,
+  );
   return toy;
 }
 
 export function updateToy(id: string, input: ToyInput) {
-  const s = getSnapshot();
-  commit({
-    ...s,
-    toys: s.toys.map((t) => (t.id === id ? { ...t, ...input } : t)),
-    // Keep the name shown on past transactions in step with a rename.
-    transactions: s.transactions.map((tx) =>
-      tx.toyId === id ? { ...tx, toyName: input.name } : tx,
-    ),
-  });
+  change(
+    (d) => ({
+      ...d,
+      toys: d.toys.map((t) => (t.id === id ? { ...t, ...input } : t)),
+      // Keep the name shown on past transactions in step with a rename (the database does the same).
+      transactions: d.transactions.map((tx) => (tx.toyId === id ? { ...tx, toyName: input.name } : tx)),
+    }),
+    () => getSupabase().rpc("save_toy", { p_toy: toyPayload(id, input) }),
+    `Couldn't save "${input.name}".`,
+  );
 }
 
 export function deleteToy(id: string) {
-  const s = getSnapshot();
-  const toy = s.toys.find((t) => t.id === id);
-  commit({ ...s, toys: s.toys.filter((t) => t.id !== id) });
-  if (toy) void removeImages(toy.images);
+  const toy = data?.toys.find((t) => t.id === id);
+  if (!toy) return;
+  change(
+    (d) => ({ ...d, toys: d.toys.filter((t) => t.id !== id) }),
+    async () => {
+      const result = await getSupabase().from("toys").delete().eq("id", id);
+      // Only once the toy is really gone are its pictures safe to delete.
+      if (!result.error) void removeImages(toy.images);
+      return result;
+    },
+    `Couldn't delete "${toy.name}".`,
+  );
 }
 
 // ---------- Transactions ----------
@@ -228,10 +384,14 @@ function adjustStock(toys: Toy[], toyId: string, quality: Quality, delta: number
   );
 }
 
-/** Records a transaction and adjusts that quality's stock. Returns an error message, or null on success. */
+/**
+ * Records a transaction and adjusts that quality's stock. Returns an error message
+ * if the input is invalid, or null once the change is accepted. The database checks
+ * stock again when saving, in case it changed elsewhere in the meantime.
+ */
 export function addTransaction(input: TransactionInput): string | null {
-  const s = getSnapshot();
-  const toy = s.toys.find((t) => t.id === input.toyId);
+  if (!data) return "The shop's data hasn't loaded yet.";
+  const toy = data.toys.find((t) => t.id === input.toyId);
   if (!toy) return "Choose a toy for this transaction.";
   const variant = toy.qualities.find((q) => q.quality === input.quality);
   if (!variant) return `"${toy.name}" doesn't come in ${input.quality}.`;
@@ -246,28 +406,48 @@ export function addTransaction(input: TransactionInput): string | null {
   }
   const tx: Transaction = {
     ...input,
-    id: newId(),
+    id: crypto.randomUUID(),
     toyName: toy.name,
     amount: round2(input.quantity * input.unitPrice),
   };
-  commit({
-    ...s,
-    transactions: [tx, ...s.transactions],
-    toys: adjustStock(s.toys, toy.id, input.quality, stockDelta(input.type, input.quantity)),
-  });
+  change(
+    (d) => ({
+      ...d,
+      transactions: [tx, ...d.transactions],
+      toys: adjustStock(d.toys, toy.id, input.quality, stockDelta(input.type, input.quantity)),
+    }),
+    () =>
+      getSupabase().rpc("record_transaction", {
+        p_tx: {
+          id: tx.id,
+          date: tx.date,
+          type: tx.type,
+          toy_id: tx.toyId,
+          quality: tx.quality,
+          quantity: tx.quantity,
+          unit_price: tx.unitPrice,
+          payment: tx.payment,
+          note: tx.note,
+        },
+      }),
+    `Couldn't record the ${input.type} of "${toy.name}".`,
+  );
   return null;
 }
 
 /** Removes a transaction and undoes its effect on that quality's stock. */
 export function deleteTransaction(id: string) {
-  const s = getSnapshot();
-  const tx = s.transactions.find((t) => t.id === id);
+  const tx = data?.transactions.find((t) => t.id === id);
   if (!tx) return;
-  commit({
-    ...s,
-    transactions: s.transactions.filter((t) => t.id !== id),
-    toys: adjustStock(s.toys, tx.toyId, tx.quality, -stockDelta(tx.type, tx.quantity)),
-  });
+  change(
+    (d) => ({
+      ...d,
+      transactions: d.transactions.filter((t) => t.id !== id),
+      toys: adjustStock(d.toys, tx.toyId, tx.quality, -stockDelta(tx.type, tx.quantity)),
+    }),
+    () => getSupabase().rpc("delete_transaction", { p_id: id }),
+    "Couldn't delete the transaction.",
+  );
 }
 
 export type RestockInput = {
@@ -286,7 +466,8 @@ export type RestockInput = {
  * Returns an error message, or null on success.
  */
 export function addRestock(input: RestockInput): string | null {
-  const s = getSnapshot();
+  if (!data) return "The shop's data hasn't loaded yet.";
+  const s = data;
   if (input.lines.length === 0) return "Add at least one toy to restock.";
   if (!(input.deliveryCost >= 0) || !Number.isFinite(input.deliveryCost)) {
     return "Delivery cost can't be negative.";
@@ -317,11 +498,11 @@ export function addRestock(input: RestockInput): string | null {
     input.lines.map((l) => l.quantity),
     input.deliveryCost,
   );
-  const batchId = newId();
+  const batchId = crypto.randomUUID();
   const transactions: Transaction[] = input.lines.map((line, i) => {
     const toy = s.toys.find((t) => t.id === line.toyId)!;
     return {
-      id: newId(),
+      id: crypto.randomUUID(),
       date: input.date,
       type: "restock",
       toyId: toy.id,
@@ -337,9 +518,29 @@ export function addRestock(input: RestockInput): string | null {
     };
   });
 
-  let toys = s.toys;
-  for (const tx of transactions) toys = adjustStock(toys, tx.toyId, tx.quality, tx.quantity);
-  commit({ ...s, transactions: [...transactions, ...s.transactions], toys });
+  change(
+    (d) => {
+      let toys = d.toys;
+      for (const tx of transactions) toys = adjustStock(toys, tx.toyId, tx.quality, tx.quantity);
+      return { ...d, transactions: [...transactions, ...d.transactions], toys };
+    },
+    () =>
+      getSupabase().rpc("record_restock", {
+        p_lines: transactions.map((tx) => ({
+          id: tx.id,
+          batch_id: tx.batchId,
+          date: tx.date,
+          toy_id: tx.toyId,
+          quality: tx.quality,
+          quantity: tx.quantity,
+          unit_price: tx.unitPrice,
+          delivery: tx.delivery,
+          payment: tx.payment,
+          note: tx.note,
+        })),
+      }),
+    "Couldn't record the restock.",
+  );
   return null;
 }
 
@@ -348,35 +549,112 @@ export function addRestock(input: RestockInput): string | null {
 export type ExpenseInput = Omit<Expense, "id">;
 
 export function addExpense(input: ExpenseInput) {
-  const s = getSnapshot();
-  commit({ ...s, expenses: [{ ...input, id: newId() }, ...s.expenses] });
+  const expense: Expense = { ...input, id: crypto.randomUUID() };
+  change(
+    (d) => ({ ...d, expenses: [expense, ...d.expenses] }),
+    () => getSupabase().from("expenses").insert(expense),
+    "Couldn't save the expense.",
+  );
 }
 
 export function updateExpense(id: string, input: ExpenseInput) {
-  const s = getSnapshot();
-  commit({ ...s, expenses: s.expenses.map((e) => (e.id === id ? { ...input, id } : e)) });
+  change(
+    (d) => ({ ...d, expenses: d.expenses.map((e) => (e.id === id ? { ...input, id } : e)) }),
+    () => getSupabase().from("expenses").update(input).eq("id", id),
+    "Couldn't save the expense.",
+  );
 }
 
 export function deleteExpense(id: string) {
-  const s = getSnapshot();
-  commit({ ...s, expenses: s.expenses.filter((e) => e.id !== id) });
+  change(
+    (d) => ({ ...d, expenses: d.expenses.filter((e) => e.id !== id) }),
+    () => getSupabase().from("expenses").delete().eq("id", id),
+    "Couldn't delete the expense.",
+  );
 }
 
-// ---------- Settings & data management ----------
+// ---------- Replacing everything ----------
 
-export function updateSettings(patch: Partial<ShopData["settings"]>) {
-  const s = getSnapshot();
-  commit({ ...s, settings: { ...s.settings, ...patch } });
+function check(result: Result) {
+  if (result.error) throw new Error(result.error.message);
 }
 
+/** Deletes all toys, transactions and expenses, then optionally fills in `seed`. */
+async function replaceAll(seed: ShopData | null) {
+  if (!data) return;
+  const oldImages = data.toys.flatMap((t) => t.images);
+  const settings = data.settings;
+  // Show the loading state while the database is rewritten.
+  data = null;
+  emit();
+  await queue;
+  try {
+    const supabase = getSupabase();
+    // `not id is null` matches every row; the API refuses a delete with no filter.
+    check(await supabase.from("transactions").delete().not("id", "is", null));
+    check(await supabase.from("expenses").delete().not("id", "is", null));
+    check(await supabase.from("toys").delete().not("id", "is", null));
+    void removeImages(oldImages);
+
+    if (seed) {
+      check(
+        await supabase.from("toys").insert(
+          seed.toys.map((t) => ({
+            id: t.id,
+            name: t.name,
+            sku: t.sku,
+            manufacturer: t.manufacturer,
+            category: t.category,
+            images: t.images,
+            reorder_level: t.reorderLevel,
+            notes: t.notes,
+            created_at: t.createdAt,
+          })),
+        ),
+      );
+      check(
+        await supabase
+          .from("toy_qualities")
+          .insert(seed.toys.flatMap((t) => t.qualities.map((q, position) => ({ toy_id: t.id, ...q, position })))),
+      );
+      // Inserted directly rather than through record_transaction: the sample stock
+      // levels are already the "after" numbers, so they must not be adjusted again.
+      check(
+        await supabase.from("transactions").insert(
+          seed.transactions.map((tx) => ({
+            id: tx.id,
+            date: tx.date,
+            type: tx.type,
+            toy_id: tx.toyId,
+            toy_name: tx.toyName,
+            quality: tx.quality,
+            quantity: tx.quantity,
+            unit_price: tx.unitPrice,
+            amount: tx.amount,
+            payment: tx.payment,
+            note: tx.note,
+          })),
+        ),
+      );
+      check(await supabase.from("expenses").insert(seed.expenses));
+    }
+  } catch (e) {
+    syncError = `That didn't finish, so some data may be missing. ${errorText(e)}`;
+  }
+  await load();
+  // `load` re-reads settings from this browser; make sure the ones in use carry over.
+  if (data) {
+    data = { ...(data as ShopData), settings };
+    emit();
+  }
+}
+
+/** Replaces everything in the database with the sample data. */
 export function loadSampleData() {
-  const s = getSnapshot();
-  void clearImages();
-  commit({ ...createSeed(), settings: s.settings });
+  return replaceAll(createSeed());
 }
 
+/** Deletes every toy, transaction and expense, and all toy pictures. */
 export function clearAllData() {
-  const s = getSnapshot();
-  void clearImages();
-  commit({ ...createEmpty(), settings: s.settings });
+  return replaceAll(null);
 }

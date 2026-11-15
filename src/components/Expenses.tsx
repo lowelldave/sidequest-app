@@ -16,16 +16,16 @@ import {
   EmptyState,
   Field,
   FormError,
-  Loading,
   Modal,
   PageHeader,
   StatCard,
   inputCls,
 } from "./ui";
+import { ShopLoading } from "./status";
 
 export function Expenses() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <ExpensesView data={data} />;
 }
 

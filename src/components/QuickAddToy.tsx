@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { todayISO } from "@/lib/format";
 import { addToy } from "@/lib/store";
 import { CATEGORIES, QUALITIES, type Category, type Quality, type Toy, type TransactionType } from "@/lib/types";
 import { toast } from "./toast";
@@ -53,7 +52,7 @@ export function QuickAddToy({
         reorderLevel: 5,
         notes: "",
       },
-      todayISO(),
+
     );
     toast({
       tone: "success",

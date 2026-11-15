@@ -21,7 +21,8 @@ import { ToyCover } from "./images";
 import { ToyDetail } from "./ToyDetail";
 import { ToyForm } from "./ToyForm";
 import { QualityBadges, StockBadge, costRange, priceText } from "./toy-parts";
-import { Button, Chip, EmptyState, Field, Loading, Modal, PageHeader, inputCls } from "./ui";
+import { Button, Chip, EmptyState, Field, Modal, PageHeader, inputCls } from "./ui";
+import { ShopLoading } from "./status";
 
 const SORTS = {
   name: "Name (A–Z)",
@@ -48,7 +49,7 @@ function toggle<T>(list: T[], value: T): T[] {
 
 export function Inventory() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <InventoryView data={data} />;
 }
 

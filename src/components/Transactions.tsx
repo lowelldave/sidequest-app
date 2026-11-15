@@ -22,12 +22,12 @@ import {
   Chip,
   EmptyState,
   Field,
-  Loading,
   PageHeader,
   QUALITY_TONE,
   StatCard,
   inputCls,
 } from "./ui";
+import { ShopLoading } from "./status";
 
 const TYPE_TONE: Record<TransactionType, "green" | "red" | "blue"> = {
   sale: "green",
@@ -37,7 +37,7 @@ const TYPE_TONE: Record<TransactionType, "green" | "red" | "blue"> = {
 
 export function Transactions() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <TransactionsView data={data} />;
 }
 
