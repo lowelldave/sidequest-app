@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { todayISO } from "@/lib/format";
 import { removeImages } from "@/lib/images";
 import { addToy, updateToy, type ToyInput } from "@/lib/store";
 import {
@@ -106,7 +105,7 @@ export function ToyForm({
 
     saved.current = true;
     if (toy) updateToy(toy.id, input);
-    else addToy(input, todayISO());
+    else addToy(input);
     // Pictures that were taken off a saved toy can go now that it's saved.
     void removeImages((toy?.images ?? []).filter((id) => !images.includes(id)));
     onDone();

@@ -23,7 +23,8 @@ import {
   type ShopData,
 } from "@/lib/types";
 import { ToyCover } from "./images";
-import { Badge, Card, Loading, PageHeader, StatCard, inputCls } from "./ui";
+import { Badge, Card, PageHeader, StatCard, inputCls } from "./ui";
+import { ShopLoading } from "./status";
 
 type Range = "month" | "30d" | "year" | "all";
 
@@ -44,7 +45,7 @@ function rangeStart(range: Range): string {
 
 export function Dashboard() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <DashboardView data={data} />;
 }
 

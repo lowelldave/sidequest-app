@@ -98,7 +98,7 @@ export function Sidebar() {
               type="button"
               className="text-muted underline-offset-2 hover:text-foreground hover:underline"
               onClick={() => {
-                if (confirm("Replace everything with the sample data?")) loadSampleData();
+                if (confirm("Replace everything in the database with the sample data?")) void loadSampleData();
               }}
             >
               Load sample data
@@ -108,14 +108,14 @@ export function Sidebar() {
               className="text-muted underline-offset-2 hover:text-foreground hover:underline"
               onClick={() => {
                 if (confirm("Delete all toys, transactions and expenses? This can't be undone.")) {
-                  clearAllData();
+                  void clearAllData();
                 }
               }}
             >
               Clear all data
             </button>
           </div>
-          <p className="text-xs text-muted">Data is saved in this browser.</p>
+          <p className="text-xs text-muted">Data is saved to your Supabase database.</p>
         </div>
       )}
     </aside>

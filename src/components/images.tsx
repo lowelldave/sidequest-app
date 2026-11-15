@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { MAX_IMAGES_PER_TOY, saveImage, useImageUrl } from "@/lib/images";
+import { MAX_IMAGES_PER_TOY, imageUrl, saveImage } from "@/lib/images";
 import type { Toy } from "@/lib/types";
 
 /** The default picture for a toy that has no images. */
@@ -32,8 +32,8 @@ export function NoImage({ compact = false }: { compact?: boolean }) {
 }
 
 /**
- * One stored image filling its container. Shows a blank tile while loading
- * and the "No image" picture if the image can't be found.
+ * One stored picture filling its container. Falls back to the "No image"
+ * picture if the file can't be loaded (for example, it was deleted).
  */
 export function StoredImage({
   id,
@@ -41,22 +41,26 @@ export function StoredImage({
   fit = "cover",
   compact = false,
 }: {
+  /** The picture's path in storage. */
   id: string | undefined;
   alt: string;
   fit?: "cover" | "contain";
   compact?: boolean;
 }) {
-  const url = useImageUrl(id);
-  if (url === undefined) return <div className="h-full w-full animate-pulse bg-surface-2" />;
-  if (url === null) return <NoImage compact={compact} />;
+  // Remember which path failed, so a different picture in the same slot gets its own try.
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!id || failed === id) return <NoImage compact={compact} />;
   return (
-    // A plain <img>: these are local blob URLs, which next/image can't optimise.
+    // A plain <img>: the pictures are already resized on upload, and using next/image
+    // would need the Supabase host listed in next.config for every project.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={url}
+      src={imageUrl(id)}
       alt={alt}
       draggable={false}
-      className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"}`}
+      loading="lazy"
+      onError={() => setFailed(id)}
+      className={`h-full w-full bg-surface-2 ${fit === "cover" ? "object-cover" : "object-contain"}`}
     />
   );
 }

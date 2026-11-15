@@ -108,11 +108,11 @@ const EXPENSES: ExpenseSeed[] = [
   [138, "Other", "City Hall", "Business permit renewal", 75],
 ];
 
-/** Sample data so the app has something to show on first run. */
+/** Sample data, loaded into the database from the sidebar's "Load sample data". */
 export function createSeed(): ShopData {
   const toys: Toy[] = TOYS.map(
     ([name, sku, manufacturer, category, reorderLevel, notes, qualities], i) => ({
-      id: `seed-toy-${i}`,
+      id: crypto.randomUUID(),
       name,
       sku,
       manufacturer,
@@ -126,12 +126,12 @@ export function createSeed(): ShopData {
   );
 
   const transactions: Transaction[] = TRANSACTIONS.map(
-    ([daysAgo, type, toyIndex, qualityIndex, quantity, payment, note], i) => {
+    ([daysAgo, type, toyIndex, qualityIndex, quantity, payment, note]) => {
       const toy = toys[toyIndex];
       const variant = toy.qualities[qualityIndex];
       const unitPrice = type === "restock" ? variant.cost : variant.price;
       return {
-        id: `seed-tx-${i}`,
+        id: crypto.randomUUID(),
         date: daysAgoISO(daysAgo),
         type,
         toyId: toy.id,
@@ -147,8 +147,8 @@ export function createSeed(): ShopData {
   );
 
   const expenses: Expense[] = EXPENSES.map(
-    ([daysAgo, category, vendor, description, amount], i) => ({
-      id: `seed-exp-${i}`,
+    ([daysAgo, category, vendor, description, amount]) => ({
+      id: crypto.randomUUID(),
       date: daysAgoISO(daysAgo),
       category,
       vendor,
@@ -161,15 +161,6 @@ export function createSeed(): ShopData {
     toys,
     transactions,
     expenses,
-    settings: { currency: "USD", inventoryView: "gallery" },
-  };
-}
-
-export function createEmpty(): ShopData {
-  return {
-    toys: [],
-    transactions: [],
-    expenses: [],
     settings: { currency: "USD", inventoryView: "gallery" },
   };
 }

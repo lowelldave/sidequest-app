@@ -59,7 +59,7 @@ export function ToyDetail({
                   ["Stock value (retail)", money(retailValue(toy), currency)],
                   ["Stock value (cost)", money(costValue(toy), currency)],
                   ["Low-stock level", String(toy.reorderLevel)],
-                  ["Added", formatDate(toy.createdAt)],
+                  ["Added", formatDate(toy.createdAt.slice(0, 10))],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-xs text-muted">{label}</dt>
