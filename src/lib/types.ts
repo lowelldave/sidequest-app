@@ -65,9 +65,17 @@ export interface Transaction {
   /** Which quality of the toy this transaction was for */
   quality: Quality;
   quantity: number;
+  /** What each unit was sold or bought for, not counting any delivery cost. */
   unitPrice: number;
-  /** quantity × unitPrice, always positive */
+  /**
+   * This line's share of a restock's delivery cost (see lib/restock.ts). It is
+   * included in `amount`, so a unit's final cost is `amount / quantity`.
+   */
+  delivery?: number;
+  /** quantity × unitPrice (+ delivery), always positive */
   amount: number;
+  /** Restock lines that arrived in one delivery share this id. */
+  batchId?: string;
   payment: PaymentMethod;
   note: string;
 }

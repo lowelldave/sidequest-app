@@ -1,19 +1,18 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { formatDate, money, todayISO } from "@/lib/format";
-import { addTransaction, deleteTransaction, useShop } from "@/lib/store";
+import { useState } from "react";
+import { formatDate, money } from "@/lib/format";
+import { downloadInvoice } from "@/lib/invoice";
+import { deleteTransaction, useShop } from "@/lib/store";
+import { TransactionForm } from "./TransactionForm";
+import { toast } from "./toast";
 import {
   PAYMENT_METHODS,
   TRANSACTION_LABEL,
   TRANSACTION_TYPES,
   signedAmount,
-  totalStock,
   type PaymentMethod,
-  type Quality,
-  type QualityStock,
   type ShopData,
-  type Toy,
   type Transaction,
   type TransactionType,
 } from "@/lib/types";
@@ -23,9 +22,7 @@ import {
   Chip,
   EmptyState,
   Field,
-  FormError,
   Loading,
-  Modal,
   PageHeader,
   QUALITY_TONE,
   StatCard,
@@ -65,10 +62,29 @@ function TransactionsView({ data }: { data: ShopData }) {
     )
     .sort((a, b) => b.date.localeCompare(a.date));
 
+  const batchSizes = new Map<string, number>();
+  for (const t of data.transactions) {
+    if (t.batchId) batchSizes.set(t.batchId, (batchSizes.get(t.batchId) ?? 0) + 1);
+  }
+
   const total = (type: TransactionType) =>
     filtered.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
   const net = filtered.reduce((a, t) => a + signedAmount(t), 0);
   const filtersActive = q !== "" || types.length > 0 || payment !== "all" || !!from || !!to;
+
+  async function invoice(t: Transaction) {
+    try {
+      const group = t.batchId ? data.transactions.filter((x) => x.batchId === t.batchId) : [t];
+      const file = await downloadInvoice(group, data.toys, currency);
+      toast({ tone: "success", title: "Invoice downloaded", message: file });
+    } catch {
+      toast({
+        tone: "error",
+        title: "Couldn't create the invoice",
+        message: "Something went wrong while making the PDF. Please try again.",
+      });
+    }
+  }
 
   function remove(t: Transaction) {
     if (
@@ -77,6 +93,11 @@ function TransactionsView({ data }: { data: ShopData }) {
       )
     ) {
       deleteTransaction(t.id);
+      toast({
+        tone: "success",
+        title: "Transaction deleted",
+        message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock adjusted back.`,
+      });
     }
   }
 
@@ -86,7 +107,7 @@ function TransactionsView({ data }: { data: ShopData }) {
         title="Transactions"
         subtitle="Sales, refunds and restocks. Each one updates stock automatically."
         action={
-          <Button variant="primary" onClick={() => setAdding(true)} disabled={data.toys.length === 0}>
+          <Button variant="primary" onClick={() => setAdding(true)}>
             + New transaction
           </Button>
         }
@@ -171,18 +192,14 @@ function TransactionsView({ data }: { data: ShopData }) {
         data.transactions.length === 0 ? (
           <EmptyState
             title="No transactions yet"
-            hint={
-              data.toys.length === 0
-                ? "Add a toy to the inventory first, then record a sale or restock."
-                : "Record your first sale, refund or restock."
-            }
+            hint="Record your first sale, refund or restock. Toys that aren't in the inventory yet can be added as you go."
           />
         ) : (
           <EmptyState title="No transactions match these filters" hint="Try a wider date range or fewer filters." />
         )
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-3 font-medium">Date</th>
@@ -190,7 +207,7 @@ function TransactionsView({ data }: { data: ShopData }) {
                 <th className="px-4 py-3 font-medium">Toy</th>
                 <th className="px-4 py-3 font-medium">Quality</th>
                 <th className="px-4 py-3 text-right font-medium">Qty</th>
-                <th className="px-4 py-3 text-right font-medium">Unit price</th>
+                <th className="px-4 py-3 text-right font-medium">Unit price / cost</th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Payment</th>
                 <th className="px-4 py-3" />
@@ -205,6 +222,11 @@ function TransactionsView({ data }: { data: ShopData }) {
                   </td>
                   <td className="px-4 py-3">
                     <p className="font-medium">{t.toyName}</p>
+                    {t.batchId && (batchSizes.get(t.batchId) ?? 0) > 1 && (
+                      <p className="text-xs text-muted">
+                        One of {batchSizes.get(t.batchId)} toys in the same delivery
+                      </p>
+                    )}
                     {t.note && <p className="text-xs text-muted">{t.note}</p>}
                   </td>
                   <td className="px-4 py-3">
@@ -212,14 +234,32 @@ function TransactionsView({ data }: { data: ShopData }) {
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.quantity}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
-                    {money(t.unitPrice, currency)}
+                    {t.delivery ? (
+                      <>
+                        {/* Final unit cost, with the delivery share included. */}
+                        <span className="text-foreground">{money(t.amount / t.quantity, currency)}</span>
+                        <span className="block text-xs">
+                          {money(t.unitPrice, currency)} + {money(t.delivery / t.quantity, currency)} delivery
+                        </span>
+                      </>
+                    ) : (
+                      money(t.unitPrice, currency)
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">
                     {signedAmount(t) > 0 ? "+" : "−"}
                     {money(t.amount, currency)}
                   </td>
                   <td className="px-4 py-3 text-muted">{t.payment}</td>
-                  <td className="px-2 py-3 text-right">
+                  <td className="px-2 py-3 text-right whitespace-nowrap">
+                    <Button
+                      variant="ghost"
+                      className="h-8 px-2"
+                      onClick={() => void invoice(t)}
+                      aria-label={`Download invoice for ${t.toyName}, ${formatDate(t.date)}`}
+                    >
+                      Invoice
+                    </Button>
                     <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
                       Delete
                     </Button>
@@ -235,179 +275,5 @@ function TransactionsView({ data }: { data: ShopData }) {
         <TransactionForm toys={data.toys} currency={currency} onClose={() => setAdding(false)} />
       )}
     </>
-  );
-}
-
-function defaultUnitPrice(variant: QualityStock | undefined, type: TransactionType): string {
-  if (!variant) return "";
-  return String(type === "restock" ? variant.cost : variant.price);
-}
-
-/** A sale needs stock to sell, so it can't use a quality that's sold out; refunds and restocks can. */
-function isSelectable(variant: QualityStock, type: TransactionType): boolean {
-  return type !== "sale" || variant.stock > 0;
-}
-
-/** Keeps the preferred quality if it can be used for this kind of transaction, else the first one that can. */
-function pickQuality(toy: Toy | undefined, type: TransactionType, preferred?: Quality): QualityStock | undefined {
-  if (!toy) return undefined;
-  const usable = toy.qualities.filter((q) => isSelectable(q, type));
-  return usable.find((q) => q.quality === preferred) ?? usable[0] ?? toy.qualities[0];
-}
-
-function TransactionForm({
-  toys,
-  currency,
-  onClose,
-}: {
-  toys: Toy[];
-  currency: string;
-  onClose: () => void;
-}) {
-  const sorted = [...toys].sort((a, b) => a.name.localeCompare(b.name));
-  const [type, setType] = useState<TransactionType>("sale");
-  const [toyId, setToyId] = useState(sorted[0]?.id ?? "");
-  const [quality, setQuality] = useState<Quality>(
-    pickQuality(sorted[0], "sale")?.quality ?? "Loose",
-  );
-  const [quantity, setQuantity] = useState("1");
-  const [unitPrice, setUnitPrice] = useState(
-    defaultUnitPrice(pickQuality(sorted[0], "sale"), "sale"),
-  );
-  const [error, setError] = useState<string | null>(null);
-
-  const toy = toys.find((t) => t.id === toyId);
-  const variant = toy?.qualities.find((q) => q.quality === quality);
-  const amount = Number(quantity) * Number(unitPrice);
-
-  /** Changes the toy, type and/or quality together so the quality and price always fit. */
-  function choose(next: { toyId?: string; type?: TransactionType; quality?: Quality }) {
-    const nextToyId = next.toyId ?? toyId;
-    const nextType = next.type ?? type;
-    const nextToy = toys.find((t) => t.id === nextToyId);
-    const nextVariant = pickQuality(nextToy, nextType, next.quality ?? quality);
-    setToyId(nextToyId);
-    setType(nextType);
-    setQuality(nextVariant?.quality ?? quality);
-    setUnitPrice(defaultUnitPrice(nextVariant, nextType));
-    setError(null);
-  }
-
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const problem = addTransaction({
-      type,
-      toyId,
-      quality,
-      quantity: Number(quantity),
-      unitPrice: Number(unitPrice),
-      date: String(fd.get("date")) || todayISO(),
-      payment: String(fd.get("payment")) as PaymentMethod,
-      note: String(fd.get("note") ?? "").trim(),
-    });
-    if (problem) setError(problem);
-    else onClose();
-  }
-
-  return (
-    <Modal title="New transaction" onClose={onClose}>
-      <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 flex gap-2">
-          {TRANSACTION_TYPES.map((t) => (
-            <Chip
-              key={t}
-              active={type === t}
-              onClick={() => choose({ type: t })}
-            >
-              {TRANSACTION_LABEL[t]}
-            </Chip>
-          ))}
-        </div>
-        <Field label="Toy" className="col-span-2">
-          <select
-            className={inputCls}
-            value={toyId}
-            onChange={(e) => choose({ toyId: e.target.value })}
-          >
-            {sorted.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name} ({totalStock(t)} in stock)
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Quality" className="col-span-2">
-          <select
-            className={inputCls}
-            value={quality}
-            onChange={(e) => choose({ quality: e.target.value as Quality })}
-          >
-            {toy?.qualities.map((q) => (
-              <option key={q.quality} value={q.quality} disabled={!isSelectable(q, type)}>
-                {q.quality} · {q.stock} in stock · {money(type === "restock" ? q.cost : q.price, currency)}
-                {!isSelectable(q, type) ? " (sold out)" : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Quantity">
-          <input
-            type="number"
-            min="1"
-            step="1"
-            inputMode="numeric"
-            className={inputCls}
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            autoFocus
-            required
-          />
-        </Field>
-        <Field label={type === "restock" ? "Unit cost" : "Unit price"}>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            className={inputCls}
-            value={unitPrice}
-            onChange={(e) => setUnitPrice(e.target.value)}
-            required
-          />
-        </Field>
-        <Field label="Date">
-          <input name="date" type="date" className={inputCls} defaultValue={todayISO()} required />
-        </Field>
-        <Field label="Payment">
-          <select name="payment" className={inputCls}>
-            {PAYMENT_METHODS.map((p) => (
-              <option key={p}>{p}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Note" className="col-span-2">
-          <input name="note" className={inputCls} placeholder="Optional" />
-        </Field>
-        <p className="col-span-2 flex justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
-          <span className="text-muted">
-            {type === "sale" ? "Money in" : "Money out"} · {variant?.quality ?? "quality"} stock{" "}
-            {type === "sale" ? "decreases" : "increases"}
-          </span>
-          <span className="font-semibold tabular-nums">
-            {money(Number.isFinite(amount) ? amount : 0, currency)}
-          </span>
-        </p>
-        <div className="col-span-2">
-          <FormError message={error} />
-        </div>
-        <div className="col-span-2 flex justify-end gap-2">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit">
-            Record {type}
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
