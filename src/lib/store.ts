@@ -1,8 +1,9 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { clearImages, removeImages } from "./images";
 import { createEmpty, createSeed } from "./seed";
-import type { Expense, ShopData, Toy, Transaction } from "./types";
+import type { Expense, Quality, QualityStock, ShopData, Toy, Transaction } from "./types";
 
 /**
  * All shop data lives in the browser's localStorage under this key.
@@ -27,7 +28,7 @@ function isShopData(value: unknown): value is ShopData {
 }
 
 /** Earlier versions used different quality names; map them to the current grades. */
-const LEGACY_QUALITY: Record<string, Toy["quality"]> = {
+const LEGACY_QUALITY: Record<string, Quality> = {
   Collector: "MISB",
   Premium: "MIB",
   Standard: "BIB",
@@ -35,12 +36,80 @@ const LEGACY_QUALITY: Record<string, Toy["quality"]> = {
   "Pre-owned": "Loose",
 };
 
+/** Same for categories; the ones with no close match fold into Collectibles. */
+const LEGACY_CATEGORY: Record<string, Toy["category"]> = {
+  "Action Figures": "Figures",
+  "Dolls & Plush": "Plush",
+  "Building Sets": "Model Kits",
+  "Vehicles & RC": "Model Kits",
+  "Games & Puzzles": "Collectibles",
+  Educational: "Collectibles",
+  "Outdoor & Sports": "Collectibles",
+};
+
+/** Toys saved before qualities became a list had one quality with its own price, cost and stock. */
+type LegacyToy = Omit<Toy, "qualities" | "images"> & {
+  emoji?: string;
+  images?: string[];
+  quality?: string;
+  price?: number;
+  cost?: number;
+  stock?: number;
+  qualities?: QualityStock[];
+};
+
 function migrate(data: ShopData): ShopData {
-  if (!data.toys.some((t) => (t.quality as string) in LEGACY_QUALITY)) return data;
-  return {
-    ...data,
-    toys: data.toys.map((t) => ({ ...t, quality: LEGACY_QUALITY[t.quality as string] ?? t.quality })),
-  };
+  const legacyToys = data.toys as unknown as LegacyToy[];
+  const outdated =
+    legacyToys.some(
+      (t) =>
+        !Array.isArray(t.qualities) ||
+        t.qualities.some((q) => (q.quality as string) in LEGACY_QUALITY) ||
+        (t.category as string) in LEGACY_CATEGORY ||
+        typeof t.manufacturer !== "string" ||
+        !Array.isArray(t.images),
+    ) ||
+    data.transactions.some(
+      (tx) => !tx.quality || (tx.quality as string) in LEGACY_QUALITY,
+    );
+  if (!outdated) return data;
+
+  const mapQuality = (q: string): Quality => LEGACY_QUALITY[q] ?? (q as Quality);
+
+  const toys = legacyToys.map((t): Toy => {
+    // `emoji` is the old stand-in for a picture; drop it.
+    const { quality, price, cost, stock, qualities, emoji, ...rest } = t;
+    void emoji;
+    return {
+      ...rest,
+      images: Array.isArray(rest.images) ? rest.images : [],
+      category: LEGACY_CATEGORY[rest.category as string] ?? rest.category,
+      // Toys saved before this field existed have none.
+      manufacturer: typeof rest.manufacturer === "string" ? rest.manufacturer : "",
+      qualities: Array.isArray(qualities)
+        ? qualities.map((q) => ({ ...q, quality: mapQuality(q.quality) }))
+        : [
+            {
+              quality: mapQuality(quality ?? "Loose"),
+              price: price ?? 0,
+              cost: cost ?? 0,
+              stock: stock ?? 0,
+            },
+          ],
+    };
+  });
+
+  // Older transactions don't say which quality they were for: use the toy's only quality.
+  const transactions = data.transactions.map((tx): Transaction => {
+    const raw = tx.quality as string | undefined;
+    const quality: Quality =
+      (raw && mapQuality(raw)) ||
+      toys.find((t) => t.id === tx.toyId)?.qualities[0]?.quality ||
+      "Loose";
+    return { ...tx, quality };
+  });
+
+  return { ...data, toys, transactions };
 }
 
 function read(): ShopData {
@@ -127,7 +196,9 @@ export function updateToy(id: string, input: ToyInput) {
 
 export function deleteToy(id: string) {
   const s = getSnapshot();
+  const toy = s.toys.find((t) => t.id === id);
   commit({ ...s, toys: s.toys.filter((t) => t.id !== id) });
+  if (toy) void removeImages(toy.images);
 }
 
 // ---------- Transactions ----------
@@ -139,19 +210,35 @@ function stockDelta(type: Transaction["type"], quantity: number): number {
   return type === "sale" ? -quantity : quantity;
 }
 
-/** Records a transaction and adjusts the toy's stock. Returns an error message, or null on success. */
+/** Applies a stock change to one quality of one toy. Stock never goes below zero. */
+function adjustStock(toys: Toy[], toyId: string, quality: Quality, delta: number): Toy[] {
+  return toys.map((t) =>
+    t.id === toyId
+      ? {
+          ...t,
+          qualities: t.qualities.map((q) =>
+            q.quality === quality ? { ...q, stock: Math.max(0, q.stock + delta) } : q,
+          ),
+        }
+      : t,
+  );
+}
+
+/** Records a transaction and adjusts that quality's stock. Returns an error message, or null on success. */
 export function addTransaction(input: TransactionInput): string | null {
   const s = getSnapshot();
   const toy = s.toys.find((t) => t.id === input.toyId);
   if (!toy) return "Choose a toy for this transaction.";
+  const variant = toy.qualities.find((q) => q.quality === input.quality);
+  if (!variant) return `"${toy.name}" doesn't come in ${input.quality}.`;
   if (!(input.quantity > 0) || !Number.isInteger(input.quantity)) {
     return "Quantity must be a whole number above zero.";
   }
   if (input.unitPrice < 0 || Number.isNaN(input.unitPrice)) {
     return "Unit price can't be negative.";
   }
-  if (input.type === "sale" && input.quantity > toy.stock) {
-    return `Only ${toy.stock} of "${toy.name}" in stock.`;
+  if (input.type === "sale" && input.quantity > variant.stock) {
+    return `Only ${variant.stock} of "${toy.name}" (${variant.quality}) in stock.`;
   }
   const tx: Transaction = {
     ...input,
@@ -162,14 +249,12 @@ export function addTransaction(input: TransactionInput): string | null {
   commit({
     ...s,
     transactions: [tx, ...s.transactions],
-    toys: s.toys.map((t) =>
-      t.id === toy.id ? { ...t, stock: t.stock + stockDelta(input.type, input.quantity) } : t,
-    ),
+    toys: adjustStock(s.toys, toy.id, input.quality, stockDelta(input.type, input.quantity)),
   });
   return null;
 }
 
-/** Removes a transaction and undoes its effect on stock (never below zero). */
+/** Removes a transaction and undoes its effect on that quality's stock. */
 export function deleteTransaction(id: string) {
   const s = getSnapshot();
   const tx = s.transactions.find((t) => t.id === id);
@@ -177,11 +262,7 @@ export function deleteTransaction(id: string) {
   commit({
     ...s,
     transactions: s.transactions.filter((t) => t.id !== id),
-    toys: s.toys.map((t) =>
-      t.id === tx.toyId
-        ? { ...t, stock: Math.max(0, t.stock - stockDelta(tx.type, tx.quantity)) }
-        : t,
-    ),
+    toys: adjustStock(s.toys, tx.toyId, tx.quality, -stockDelta(tx.type, tx.quantity)),
   });
 }
 
@@ -213,10 +294,12 @@ export function updateSettings(patch: Partial<ShopData["settings"]>) {
 
 export function loadSampleData() {
   const s = getSnapshot();
+  void clearImages();
   commit({ ...createSeed(), settings: s.settings });
 }
 
 export function clearAllData() {
   const s = getSnapshot();
+  void clearImages();
   commit({ ...createEmpty(), settings: s.settings });
 }

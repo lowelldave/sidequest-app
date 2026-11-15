@@ -8,7 +8,10 @@ import {
   TRANSACTION_LABEL,
   TRANSACTION_TYPES,
   signedAmount,
+  totalStock,
   type PaymentMethod,
+  type Quality,
+  type QualityStock,
   type ShopData,
   type Toy,
   type Transaction,
@@ -24,6 +27,7 @@ import {
   Loading,
   Modal,
   PageHeader,
+  QUALITY_TONE,
   StatCard,
   inputCls,
 } from "./ui";
@@ -53,7 +57,7 @@ function TransactionsView({ data }: { data: ShopData }) {
   const filtered = data.transactions
     .filter(
       (t) =>
-        (!q || `${t.toyName} ${t.note}`.toLowerCase().includes(q)) &&
+        (!q || `${t.toyName} ${t.quality} ${t.note}`.toLowerCase().includes(q)) &&
         (types.length === 0 || types.includes(t.type)) &&
         (payment === "all" || t.payment === payment) &&
         (!from || t.date >= from) &&
@@ -67,7 +71,11 @@ function TransactionsView({ data }: { data: ShopData }) {
   const filtersActive = q !== "" || types.length > 0 || payment !== "all" || !!from || !!to;
 
   function remove(t: Transaction) {
-    if (confirm(`Delete this ${t.type} of ${t.quantity} × ${t.toyName}? Stock will be adjusted back.`)) {
+    if (
+      confirm(
+        `Delete this ${t.type} of ${t.quantity} × ${t.toyName} (${t.quality})? Stock will be adjusted back.`,
+      )
+    ) {
       deleteTransaction(t.id);
     }
   }
@@ -97,7 +105,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             <input
               type="search"
               className={inputCls}
-              placeholder="Toy or note"
+              placeholder="Toy, quality or note"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -174,12 +182,13 @@ function TransactionsView({ data }: { data: ShopData }) {
         )
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Toy</th>
+                <th className="px-4 py-3 font-medium">Quality</th>
                 <th className="px-4 py-3 text-right font-medium">Qty</th>
                 <th className="px-4 py-3 text-right font-medium">Unit price</th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
@@ -197,6 +206,9 @@ function TransactionsView({ data }: { data: ShopData }) {
                   <td className="px-4 py-3">
                     <p className="font-medium">{t.toyName}</p>
                     {t.note && <p className="text-xs text-muted">{t.note}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{t.quantity}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
@@ -226,9 +238,21 @@ function TransactionsView({ data }: { data: ShopData }) {
   );
 }
 
-function defaultUnitPrice(toy: Toy | undefined, type: TransactionType): string {
-  if (!toy) return "";
-  return String(type === "restock" ? toy.cost : toy.price);
+function defaultUnitPrice(variant: QualityStock | undefined, type: TransactionType): string {
+  if (!variant) return "";
+  return String(type === "restock" ? variant.cost : variant.price);
+}
+
+/** A sale needs stock to sell, so it can't use a quality that's sold out; refunds and restocks can. */
+function isSelectable(variant: QualityStock, type: TransactionType): boolean {
+  return type !== "sale" || variant.stock > 0;
+}
+
+/** Keeps the preferred quality if it can be used for this kind of transaction, else the first one that can. */
+function pickQuality(toy: Toy | undefined, type: TransactionType, preferred?: Quality): QualityStock | undefined {
+  if (!toy) return undefined;
+  const usable = toy.qualities.filter((q) => isSelectable(q, type));
+  return usable.find((q) => q.quality === preferred) ?? usable[0] ?? toy.qualities[0];
 }
 
 function TransactionForm({
@@ -243,12 +267,31 @@ function TransactionForm({
   const sorted = [...toys].sort((a, b) => a.name.localeCompare(b.name));
   const [type, setType] = useState<TransactionType>("sale");
   const [toyId, setToyId] = useState(sorted[0]?.id ?? "");
+  const [quality, setQuality] = useState<Quality>(
+    pickQuality(sorted[0], "sale")?.quality ?? "Loose",
+  );
   const [quantity, setQuantity] = useState("1");
-  const [unitPrice, setUnitPrice] = useState(defaultUnitPrice(sorted[0], "sale"));
+  const [unitPrice, setUnitPrice] = useState(
+    defaultUnitPrice(pickQuality(sorted[0], "sale"), "sale"),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const toy = toys.find((t) => t.id === toyId);
+  const variant = toy?.qualities.find((q) => q.quality === quality);
   const amount = Number(quantity) * Number(unitPrice);
+
+  /** Changes the toy, type and/or quality together so the quality and price always fit. */
+  function choose(next: { toyId?: string; type?: TransactionType; quality?: Quality }) {
+    const nextToyId = next.toyId ?? toyId;
+    const nextType = next.type ?? type;
+    const nextToy = toys.find((t) => t.id === nextToyId);
+    const nextVariant = pickQuality(nextToy, nextType, next.quality ?? quality);
+    setToyId(nextToyId);
+    setType(nextType);
+    setQuality(nextVariant?.quality ?? quality);
+    setUnitPrice(defaultUnitPrice(nextVariant, nextType));
+    setError(null);
+  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -256,6 +299,7 @@ function TransactionForm({
     const problem = addTransaction({
       type,
       toyId,
+      quality,
       quantity: Number(quantity),
       unitPrice: Number(unitPrice),
       date: String(fd.get("date")) || todayISO(),
@@ -274,10 +318,7 @@ function TransactionForm({
             <Chip
               key={t}
               active={type === t}
-              onClick={() => {
-                setType(t);
-                setUnitPrice(defaultUnitPrice(toy, t));
-              }}
+              onClick={() => choose({ type: t })}
             >
               {TRANSACTION_LABEL[t]}
             </Chip>
@@ -287,14 +328,25 @@ function TransactionForm({
           <select
             className={inputCls}
             value={toyId}
-            onChange={(e) => {
-              setToyId(e.target.value);
-              setUnitPrice(defaultUnitPrice(toys.find((t) => t.id === e.target.value), type));
-            }}
+            onChange={(e) => choose({ toyId: e.target.value })}
           >
             {sorted.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.emoji} {t.name} ({t.stock} in stock)
+                {t.name} ({totalStock(t)} in stock)
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Quality" className="col-span-2">
+          <select
+            className={inputCls}
+            value={quality}
+            onChange={(e) => choose({ quality: e.target.value as Quality })}
+          >
+            {toy?.qualities.map((q) => (
+              <option key={q.quality} value={q.quality} disabled={!isSelectable(q, type)}>
+                {q.quality} · {q.stock} in stock · {money(type === "restock" ? q.cost : q.price, currency)}
+                {!isSelectable(q, type) ? " (sold out)" : ""}
               </option>
             ))}
           </select>
@@ -339,7 +391,7 @@ function TransactionForm({
         </Field>
         <p className="col-span-2 flex justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
           <span className="text-muted">
-            {type === "sale" ? "Money in" : "Money out"} · stock{" "}
+            {type === "sale" ? "Money in" : "Money out"} · {variant?.quality ?? "quality"} stock{" "}
             {type === "sale" ? "decreases" : "increases"}
           </span>
           <span className="font-semibold tabular-nums">

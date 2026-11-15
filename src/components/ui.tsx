@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
+import type { Quality } from "@/lib/types";
 
 export const inputCls =
   "h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-foreground placeholder:text-muted";
@@ -118,6 +119,15 @@ const TONE_STYLES: Record<Tone, string> = {
   violet: "bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-300",
 };
 
+/** Badge colour for each quality grade, used wherever a quality is shown. */
+export const QUALITY_TONE: Record<Quality, Tone> = {
+  MISB: "violet",
+  MIB: "blue",
+  BIB: "green",
+  Loose: "amber",
+  Damaged: "red",
+};
+
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span
@@ -154,10 +164,13 @@ export function Loading() {
 export function Modal({
   title,
   onClose,
+  size = "md",
   children,
 }: {
   title: string;
   onClose: () => void;
+  /** "md" suits forms; "xl" is wide, for things like the toy details with pictures. */
+  size?: "md" | "xl";
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -179,7 +192,9 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-xl sm:rounded-2xl"
+        className={`max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 shadow-xl sm:rounded-2xl ${
+          size === "xl" ? "max-w-4xl" : "max-w-lg"
+        }`}
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <h2 className="text-lg font-semibold">{title}</h2>
