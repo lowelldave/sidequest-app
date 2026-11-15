@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import type { Quality } from "@/lib/types";
 
 export const inputCls =
@@ -161,6 +161,9 @@ export function Loading() {
   );
 }
 
+/** The open dialogs, oldest first. Only the last one (on top) reacts to Escape. */
+const openModals: symbol[] = [];
+
 export function Modal({
   title,
   onClose,
@@ -173,13 +176,26 @@ export function Modal({
   size?: "md" | "xl";
   children: ReactNode;
 }) {
+  // Always call the latest onClose, without re-registering (which would reshuffle the stack).
+  const closeRef = useRef(onClose);
   useEffect(() => {
+    closeRef.current = onClose;
+  });
+
+  useEffect(() => {
+    const me = Symbol("modal");
+    openModals.push(me);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // A dialog opened from inside another one (such as adding a toy during a
+      // transaction) takes Escape first; the one underneath stays open.
+      if (e.key === "Escape" && openModals[openModals.length - 1] === me) closeRef.current();
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      openModals.splice(openModals.indexOf(me), 1);
+    };
+  }, []);
 
   return (
     <div

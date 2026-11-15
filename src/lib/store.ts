@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { clearImages, removeImages } from "./images";
+import { allocateDelivery } from "./restock";
 import { createEmpty, createSeed } from "./seed";
 import type { Expense, Quality, QualityStock, ShopData, Toy, Transaction } from "./types";
 
@@ -177,9 +178,12 @@ function round2(n: number): number {
 
 export type ToyInput = Omit<Toy, "id" | "createdAt">;
 
-export function addToy(input: ToyInput, createdAt: string) {
+/** Adds a toy to the inventory and returns it. */
+export function addToy(input: ToyInput, createdAt: string): Toy {
   const s = getSnapshot();
-  commit({ ...s, toys: [{ ...input, id: newId(), createdAt }, ...s.toys] });
+  const toy: Toy = { ...input, id: newId(), createdAt };
+  commit({ ...s, toys: [toy, ...s.toys] });
+  return toy;
 }
 
 export function updateToy(id: string, input: ToyInput) {
@@ -264,6 +268,79 @@ export function deleteTransaction(id: string) {
     transactions: s.transactions.filter((t) => t.id !== id),
     toys: adjustStock(s.toys, tx.toyId, tx.quality, -stockDelta(tx.type, tx.quantity)),
   });
+}
+
+export type RestockInput = {
+  date: string;
+  payment: Transaction["payment"];
+  note: string;
+  /** What the delivery cost in total. Shared across the lines by quantity. */
+  deliveryCost: number;
+  lines: { toyId: string; quality: Quality; quantity: number; unitCost: number }[];
+};
+
+/**
+ * Records a delivery of several toys at once and adds their stock. Each line becomes
+ * its own transaction, all sharing one `batchId`, and the delivery cost is split
+ * across them so each line's amount (and so its final unit cost) includes its share.
+ * Returns an error message, or null on success.
+ */
+export function addRestock(input: RestockInput): string | null {
+  const s = getSnapshot();
+  if (input.lines.length === 0) return "Add at least one toy to restock.";
+  if (!(input.deliveryCost >= 0) || !Number.isFinite(input.deliveryCost)) {
+    return "Delivery cost can't be negative.";
+  }
+
+  const seen = new Set<string>();
+  for (const [i, line] of input.lines.entries()) {
+    const toy = s.toys.find((t) => t.id === line.toyId);
+    const item = `Item ${i + 1}`;
+    if (!toy) return `${item}: choose a toy.`;
+    if (!toy.qualities.some((q) => q.quality === line.quality)) {
+      return `${item}: "${toy.name}" doesn't come in ${line.quality}.`;
+    }
+    if (!(line.quantity > 0) || !Number.isInteger(line.quantity)) {
+      return `${item} (${toy.name}): quantity must be a whole number above zero.`;
+    }
+    if (!(line.unitCost >= 0) || !Number.isFinite(line.unitCost)) {
+      return `${item} (${toy.name}): unit cost can't be negative.`;
+    }
+    const key = `${line.toyId}|${line.quality}`;
+    if (seen.has(key)) {
+      return `"${toy.name}" (${line.quality}) is listed twice. Combine them into one line.`;
+    }
+    seen.add(key);
+  }
+
+  const shares = allocateDelivery(
+    input.lines.map((l) => l.quantity),
+    input.deliveryCost,
+  );
+  const batchId = newId();
+  const transactions: Transaction[] = input.lines.map((line, i) => {
+    const toy = s.toys.find((t) => t.id === line.toyId)!;
+    return {
+      id: newId(),
+      date: input.date,
+      type: "restock",
+      toyId: toy.id,
+      toyName: toy.name,
+      quality: line.quality,
+      quantity: line.quantity,
+      unitPrice: line.unitCost,
+      delivery: shares[i],
+      amount: round2(line.quantity * line.unitCost + shares[i]),
+      payment: input.payment,
+      note: input.note,
+      batchId,
+    };
+  });
+
+  let toys = s.toys;
+  for (const tx of transactions) toys = adjustStock(toys, tx.toyId, tx.quality, tx.quantity);
+  commit({ ...s, transactions: [...transactions, ...s.transactions], toys });
+  return null;
 }
 
 // ---------- Expenses ----------
