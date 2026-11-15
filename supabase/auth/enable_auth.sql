@@ -62,6 +62,7 @@ revoke all on public.toys, public.toy_qualities, public.transactions, public.exp
 revoke execute on function public.save_toy(jsonb) from anon;
 revoke execute on function public.record_transaction(jsonb) from anon;
 revoke execute on function public.delete_transaction(uuid) from anon;
+revoke execute on function public.record_restock(jsonb) from anon;
 
 -- ---------------------------------------------------------------------------
 -- 3. Pictures: each user may only add and remove files in their own folder.

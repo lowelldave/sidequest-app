@@ -22,8 +22,8 @@ Then open [http://localhost:3000](http://localhost:3000). A new database is empt
 
 ## Where the data lives
 
-- **Toys, qualities, transactions and expenses** are stored in Supabase (Postgres). The schema is in `supabase/migrations/20261115000000_initial_schema.sql`. Apply it with the Supabase CLI (`supabase db push`) or paste it into the dashboard's SQL editor.
-- **Stock changes happen in the database**: `record_transaction` saves a sale, refund or restock and adjusts stock in one step, refusing a sale bigger than the stock; `delete_transaction` undoes one; `save_toy` saves a toy together with its qualities.
+- **Toys, qualities, transactions and expenses** are stored in Supabase (Postgres). The schema is in `supabase/migrations/`. Apply the files in order with the Supabase CLI (`supabase db push`) or paste each one into the dashboard's SQL editor.
+- **Stock changes happen in the database**: `record_transaction` saves a sale, refund or restock and adjusts stock in one step, refusing a sale bigger than the stock; `record_restock` saves every toy in a delivery at once, with each line's share of the delivery cost; `delete_transaction` undoes one; `save_toy` saves a toy together with its qualities.
 - **Toy pictures** are stored in the public Supabase Storage bucket `toy-images`. They are resized to at most 1200 px and compressed before upload.
 - **Display preferences** (currency, gallery or list view, light or dark theme) stay in each browser's localStorage.
 
