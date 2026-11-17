@@ -1,8 +1,9 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import { useState } from "react";
 import { money } from "@/lib/format";
-import { updateSettings, useShop } from "@/lib/store";
+import { setInventoryView, useShop } from "@/lib/store";
 import {
   CATEGORIES,
   CATEGORY_EMOJI,
@@ -55,6 +56,7 @@ export function Inventory() {
 
 function InventoryView({ data }: { data: ShopData }) {
   const { currency, inventoryView: view } = data.settings;
+  const can = useCan();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [qualities, setQualities] = useState<Quality[]>([]);
@@ -108,9 +110,11 @@ function InventoryView({ data }: { data: ShopData }) {
         title="Inventory"
         subtitle="Every toy in the shop. Select one to see its pictures and details."
         action={
-          <Button variant="primary" onClick={() => setAdding(true)}>
-            + Add toy
-          </Button>
+          can("inventory.create") && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              + Add toy
+            </Button>
+          )
         }
       />
 
@@ -226,7 +230,7 @@ function InventoryView({ data }: { data: ShopData }) {
               key={v}
               type="button"
               aria-pressed={view === v}
-              onClick={() => updateSettings({ inventoryView: v })}
+              onClick={() => setInventoryView(v)}
               className={`h-8 rounded-md px-3 text-sm font-medium capitalize transition-colors ${
                 view === v ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
               }`}

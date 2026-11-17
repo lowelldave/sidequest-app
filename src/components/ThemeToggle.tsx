@@ -1,5 +1,6 @@
 "use client";
 
+import { savePreferences } from "@/lib/account";
 import { setTheme, useTheme } from "@/lib/theme";
 
 /** Floating light/dark switch, fixed to the bottom-right corner. */
@@ -14,7 +15,12 @@ export function ThemeToggle() {
       aria-checked={theme === null ? undefined : dark}
       aria-label="Dark mode"
       title={dark ? "Switch to light mode" : "Switch to dark mode"}
-      onClick={() => setTheme(dark ? "light" : "dark")}
+      onClick={() => {
+        const next = dark ? "light" : "dark";
+        setTheme(next);
+        // Remembered in the profile too, so it follows them to other devices.
+        savePreferences({ theme: next });
+      }}
       className={`fixed right-4 bottom-4 z-40 flex items-center gap-2 rounded-full border border-line bg-surface p-1.5 pl-3 text-xs font-medium text-muted shadow-lg transition-opacity hover:text-foreground ${
         theme === null ? "pointer-events-none opacity-0" : "opacity-100"
       }`}

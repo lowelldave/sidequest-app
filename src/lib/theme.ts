@@ -80,3 +80,14 @@ export function setTheme(theme: Theme) {
   document.documentElement.setAttribute("data-theme", theme);
   notify();
 }
+
+/** Forgets the saved choice so the operating system's light/dark setting applies again. */
+export function followSystemTheme() {
+  try {
+    localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    // Blocked storage: nothing was saved anyway.
+  }
+  document.documentElement.removeAttribute("data-theme");
+  notify();
+}

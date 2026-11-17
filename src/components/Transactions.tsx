@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import { useState } from "react";
 import { formatDate, money } from "@/lib/format";
 import { downloadInvoice } from "@/lib/invoice";
@@ -43,6 +44,7 @@ export function Transactions() {
 
 function TransactionsView({ data }: { data: ShopData }) {
   const { currency } = data.settings;
+  const can = useCan();
   const [query, setQuery] = useState("");
   const [types, setTypes] = useState<TransactionType[]>([]);
   const [payment, setPayment] = useState<PaymentMethod | "all">("all");
@@ -107,9 +109,11 @@ function TransactionsView({ data }: { data: ShopData }) {
         title="Transactions"
         subtitle="Sales, refunds and restocks. Each one updates stock automatically."
         action={
-          <Button variant="primary" onClick={() => setAdding(true)}>
-            + New transaction
-          </Button>
+          can("transactions.create") && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              + New transaction
+            </Button>
+          )
         }
       />
 
@@ -260,9 +264,11 @@ function TransactionsView({ data }: { data: ShopData }) {
                     >
                       Invoice
                     </Button>
-                    <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
-                      Delete
-                    </Button>
+                    {can("transactions.delete") && (
+                      <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
+                        Delete
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,9 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { getAccount, savePreferences, subscribeAccount } from "./account";
 import { removeImages } from "./images";
 import { allocateDelivery } from "./restock";
 import { createSeed } from "./seed";
+import { getShopSettings, subscribeShopSettings } from "./shop";
 import { getSupabase } from "./supabase/client";
 import type {
   Category,
@@ -27,12 +29,10 @@ import type {
  * error is shown (see `useSyncError`) and the data is reloaded from the
  * database, which undoes the change on screen.
  *
- * Display preferences (currency, list/gallery view) are per-browser and stay
- * in localStorage.
+ * Data loads once someone with a role is signed in, and is dropped when they
+ * sign out. The currency comes from the shop settings and the list/gallery
+ * choice from the person's own preferences.
  */
-
-const SETTINGS_KEY = "toyshop:settings:v1";
-const DEFAULT_SETTINGS: ShopData["settings"] = { currency: "USD", inventoryView: "gallery" };
 
 let data: ShopData | null = null;
 /** Why the first load failed, if it did. */
@@ -40,15 +40,52 @@ let loadError: string | null = null;
 /** The most recent failed save, shown until dismissed. */
 let syncError: string | null = null;
 let started = false;
+/** Whose data is loaded (or loading), so a different sign-in starts afresh. */
+let loadedFor: string | null = null;
 
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
+
+/** Loads the data when a member signs in and forgets it when they sign out. */
+function syncWithAccount() {
+  const account = getAccount();
+  const member =
+    account.status === "signed-in" && account.access?.active && account.access.role_id ? account.user.id : null;
+  if (member === loadedFor) {
+    applySettings();
+    return;
+  }
+  loadedFor = member;
+  data = null;
+  loadError = null;
+  syncError = null;
+  emit();
+  if (member) void load();
+}
+
+function currentSettings(): ShopData["settings"] {
+  const account = getAccount();
+  const view = account.status === "signed-in" ? account.profile?.preferences.inventoryView : undefined;
+  return { currency: getShopSettings().currency, inventoryView: view ?? "gallery" };
+}
+
+/** Picks up a changed currency or view without reloading anything. */
+function applySettings() {
+  if (!data) return;
+  const next = currentSettings();
+  if (next.currency !== data.settings.currency || next.inventoryView !== data.settings.inventoryView) {
+    data = { ...data, settings: next };
+    emit();
+  }
+}
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   if (!started) {
     started = true;
-    void load();
+    subscribeAccount(syncWithAccount);
+    subscribeShopSettings(applySettings);
+    syncWithAccount();
   }
   return () => {
     listeners.delete(listener);
@@ -94,28 +131,12 @@ export function retryLoad() {
   void load();
 }
 
-// ---------- Settings (per browser) ----------
+// ---------- Settings ----------
 
-function readSettings(): ShopData["settings"] {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ShopData["settings"]>) };
-  } catch {
-    // Unreadable or blocked storage: use the defaults.
-  }
-  return DEFAULT_SETTINGS;
-}
-
-export function updateSettings(patch: Partial<ShopData["settings"]>) {
-  if (!data) return;
-  const settings = { ...data.settings, ...patch };
-  data = { ...data, settings };
-  try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  } catch {
-    // Blocked storage: the choice still applies until the page reloads.
-  }
-  emit();
+/** Switches between the list and gallery view; remembered in the person's profile. */
+export function setInventoryView(view: ShopData["settings"]["inventoryView"]) {
+  savePreferences({ inventoryView: view });
+  applySettings();
 }
 
 // ---------- Loading ----------
@@ -236,6 +257,7 @@ async function fetchAll<T>(
 }
 
 async function load() {
+  const forUser = loadedFor;
   try {
     const [toys, transactions, expenses] = await Promise.all([
       fetchAll<ToyRow>("toys", "*, toy_qualities(*)", [
@@ -253,11 +275,13 @@ async function load() {
         ["id", true],
       ]),
     ]);
+    // Signed out (or someone else signed in) while this was loading.
+    if (forUser !== loadedFor) return;
     data = {
       toys: toys.map(toToy),
       transactions: transactions.map(toTransaction),
       expenses: expenses.map(toExpense),
-      settings: data?.settings ?? readSettings(),
+      settings: currentSettings(),
     };
     loadError = null;
   } catch (e) {
@@ -573,88 +597,93 @@ export function deleteExpense(id: string) {
   );
 }
 
-// ---------- Replacing everything ----------
+// ---------- Replacing everything (admin only) ----------
 
-function check(result: Result) {
-  if (result.error) throw new Error(result.error.message);
+/** The shop's data as stored in the database, for backups and `admin_replace_data`. */
+export type DataRows = {
+  toys: Record<string, unknown>[];
+  toy_qualities: Record<string, unknown>[];
+  transactions: Record<string, unknown>[];
+  expenses: Record<string, unknown>[];
+};
+
+/** Reads every toy, quality, transaction and expense straight from the database. */
+export async function exportRows(): Promise<DataRows> {
+  const [toys, toy_qualities, transactions, expenses] = await Promise.all([
+    fetchAll<Record<string, unknown>>("toys", "*", [["id", true]]),
+    fetchAll<Record<string, unknown>>("toy_qualities", "*", [
+      ["toy_id", true],
+      ["position", true],
+    ]),
+    fetchAll<Record<string, unknown>>("transactions", "*", [["id", true]]),
+    fetchAll<Record<string, unknown>>("expenses", "*", [["id", true]]),
+  ]);
+  return { toys, toy_qualities, transactions, expenses };
 }
 
-/** Deletes all toys, transactions and expenses, then optionally fills in `seed`. */
-async function replaceAll(seed: ShopData | null) {
-  if (!data) return;
-  const oldImages = data.toys.flatMap((t) => t.images);
-  const settings = data.settings;
+/** The sample data in the database's row format. */
+function seedRows(seed: ShopData): DataRows {
+  return {
+    toys: seed.toys.map((t) => ({
+      id: t.id,
+      name: t.name,
+      sku: t.sku,
+      manufacturer: t.manufacturer,
+      category: t.category,
+      images: t.images,
+      reorder_level: t.reorderLevel,
+      notes: t.notes,
+      created_at: t.createdAt,
+    })),
+    toy_qualities: seed.toys.flatMap((t) =>
+      t.qualities.map((q, position) => ({ toy_id: t.id, ...q, position })),
+    ),
+    transactions: seed.transactions.map((tx) => ({
+      id: tx.id,
+      date: tx.date,
+      type: tx.type,
+      toy_id: tx.toyId,
+      toy_name: tx.toyName,
+      quality: tx.quality,
+      quantity: tx.quantity,
+      unit_price: tx.unitPrice,
+      delivery: tx.delivery ?? 0,
+      amount: tx.amount,
+      payment: tx.payment,
+      note: tx.note,
+      batch_id: tx.batchId ?? null,
+    })),
+    expenses: seed.expenses.map((e) => ({ ...e })),
+  };
+}
+
+/**
+ * Replaces every toy, transaction and expense with `rows`, in one step: if
+ * anything is wrong, nothing changes. Only the admin may do this.
+ * Returns an error message, or null.
+ */
+export async function replaceAllData(rows: DataRows, label: string): Promise<string | null> {
+  const oldImages = data?.toys.flatMap((t) => t.images) ?? [];
   // Show the loading state while the database is rewritten.
   data = null;
   emit();
   await queue;
-  try {
-    const supabase = getSupabase();
-    // `not id is null` matches every row; the API refuses a delete with no filter.
-    check(await supabase.from("transactions").delete().not("id", "is", null));
-    check(await supabase.from("expenses").delete().not("id", "is", null));
-    check(await supabase.from("toys").delete().not("id", "is", null));
-    void removeImages(oldImages);
-
-    if (seed) {
-      check(
-        await supabase.from("toys").insert(
-          seed.toys.map((t) => ({
-            id: t.id,
-            name: t.name,
-            sku: t.sku,
-            manufacturer: t.manufacturer,
-            category: t.category,
-            images: t.images,
-            reorder_level: t.reorderLevel,
-            notes: t.notes,
-            created_at: t.createdAt,
-          })),
-        ),
-      );
-      check(
-        await supabase
-          .from("toy_qualities")
-          .insert(seed.toys.flatMap((t) => t.qualities.map((q, position) => ({ toy_id: t.id, ...q, position })))),
-      );
-      // Inserted directly rather than through record_transaction: the sample stock
-      // levels are already the "after" numbers, so they must not be adjusted again.
-      check(
-        await supabase.from("transactions").insert(
-          seed.transactions.map((tx) => ({
-            id: tx.id,
-            date: tx.date,
-            type: tx.type,
-            toy_id: tx.toyId,
-            toy_name: tx.toyName,
-            quality: tx.quality,
-            quantity: tx.quantity,
-            unit_price: tx.unitPrice,
-            amount: tx.amount,
-            payment: tx.payment,
-            note: tx.note,
-          })),
-        ),
-      );
-      check(await supabase.from("expenses").insert(seed.expenses));
-    }
-  } catch (e) {
-    syncError = `That didn't finish, so some data may be missing. ${errorText(e)}`;
+  const { error } = await getSupabase().rpc("admin_replace_data", { p_data: rows, p_label: label });
+  if (!error) {
+    // Pictures no longer used by any toy can go.
+    const kept = new Set(rows.toys.flatMap((t) => (Array.isArray(t.images) ? (t.images as string[]) : [])));
+    void removeImages(oldImages.filter((path) => !kept.has(path)));
   }
   await load();
-  // `load` re-reads settings from this browser; make sure the ones in use carry over.
-  if (data) {
-    data = { ...(data as ShopData), settings };
-    emit();
-  }
+  return error ? errorText(error.message) : null;
 }
 
 /** Replaces everything in the database with the sample data. */
 export function loadSampleData() {
-  return replaceAll(createSeed());
+  return replaceAllData(seedRows(createSeed()), "Loaded the sample data");
 }
 
 /** Deletes every toy, transaction and expense, and all toy pictures. */
 export function clearAllData() {
-  return replaceAll(null);
+  return replaceAllData({ toys: [], toy_qualities: [], transactions: [], expenses: [] }, "Cleared all data");
 }

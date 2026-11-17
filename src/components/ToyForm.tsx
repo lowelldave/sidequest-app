@@ -1,5 +1,6 @@
 "use client";
 
+import { useShopSettings } from "@/lib/shop";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { removeImages } from "@/lib/images";
 import { addToy, updateToy, type ToyInput } from "@/lib/store";
@@ -34,8 +35,9 @@ export function ToyForm({
   onCancel: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const defaults = useShopSettings();
   const [rows, setRows] = useState<QualityRow[]>(
-    toy ? toy.qualities.map(toRow) : [{ quality: "MIB", price: "", cost: "0", stock: "0" }],
+    toy ? toy.qualities.map(toRow) : [{ quality: defaults.default_quality, price: "", cost: "0", stock: "0" }],
   );
   const [images, setImages] = useState<string[]>(toy?.images ?? []);
 
@@ -230,7 +232,7 @@ export function ToyForm({
           step="1"
           inputMode="numeric"
           className={inputCls}
-          defaultValue={toy?.reorderLevel ?? 5}
+          defaultValue={toy?.reorderLevel ?? defaults.default_reorder_level}
           required
         />
       </Field>
