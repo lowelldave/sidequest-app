@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import { useState } from "react";
 import { formatDate, money } from "@/lib/format";
 import { deleteToy } from "@/lib/store";
@@ -23,6 +24,7 @@ export function ToyDetail({
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const can = useCan();
 
   function remove() {
     if (confirm(`Delete "${toy.name}" from inventory? Past transactions are kept.`)) {
@@ -111,14 +113,22 @@ export function ToyDetail({
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
-            <Button variant="danger" onClick={remove}>
-              Delete
-            </Button>
-            <Button variant="primary" onClick={() => setEditing(true)}>
-              Edit
-            </Button>
-          </div>
+          {(can("inventory.delete") || can("inventory.edit")) && (
+            <div className="mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
+              {can("inventory.delete") ? (
+                <Button variant="danger" onClick={remove}>
+                  Delete
+                </Button>
+              ) : (
+                <span />
+              )}
+              {can("inventory.edit") && (
+                <Button variant="primary" onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+              )}
+            </div>
+          )}
         </>
       )}
     </Modal>

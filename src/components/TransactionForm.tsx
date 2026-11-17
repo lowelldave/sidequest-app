@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import { useState, type FormEvent } from "react";
 import { money, todayISO } from "@/lib/format";
 import { allocateDelivery } from "@/lib/restock";
@@ -74,6 +75,7 @@ export function TransactionForm({
   const [error, setError] = useState<string | null>(null);
   // Set while the "add a toy to the inventory" dialog is open: which line asked, and the typed name.
   const [adding, setAdding] = useState<{ lineKey: string; name: string } | null>(null);
+  const canAddToys = useCan()("inventory.create");
 
   const isRestock = type === "restock";
   // Sales and refunds are for one toy; any extra lines wait, unseen, if you switch back and forth.
@@ -212,7 +214,7 @@ export function TransactionForm({
                     : null
                 }
                 onChoose={(next) => chooseForLine(line, next)}
-                onAddNew={(name) => setAdding({ lineKey: line.key, name })}
+                onAddNew={canAddToys ? (name) => setAdding({ lineKey: line.key, name }) : undefined}
                 onChange={(patch) => setLine(line.key, patch)}
                 onRemove={() => setLines((all) => all.filter((l) => l.key !== line.key))}
               />
@@ -229,7 +231,7 @@ export function TransactionForm({
             type={type}
             currency={currency}
             onChoose={(next) => chooseForLine(shown[0], next)}
-            onAddNew={(name) => setAdding({ lineKey: shown[0].key, name })}
+            onAddNew={canAddToys ? (name) => setAdding({ lineKey: shown[0].key, name }) : undefined}
             onChange={(patch) => setLine(shown[0].key, patch)}
           />
         )}
@@ -349,7 +351,7 @@ function SingleLine({
   type: TransactionType;
   currency: string;
   onChoose: (next: { toyId?: string; quality?: Quality }) => void;
-  onAddNew: (name: string) => void;
+  onAddNew?: (name: string) => void;
   onChange: (patch: Partial<Line>) => void;
 }) {
   return (
@@ -433,7 +435,7 @@ function RestockLine({
   /** Set when a delivery cost applies: the bought unit cost and the delivery added to each unit. */
   finalUnitCost: { unit: number; perUnitDelivery: number } | null;
   onChoose: (next: { toyId?: string; quality?: Quality }) => void;
-  onAddNew: (name: string) => void;
+  onAddNew?: (name: string) => void;
   onChange: (patch: Partial<Line>) => void;
   onRemove: () => void;
 }) {

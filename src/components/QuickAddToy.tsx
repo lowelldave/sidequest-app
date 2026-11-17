@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useShopSettings } from "@/lib/shop";
 import { addToy } from "@/lib/store";
 import { CATEGORIES, QUALITIES, type Category, type Quality, type Toy, type TransactionType } from "@/lib/types";
 import { toast } from "./toast";
@@ -26,6 +27,7 @@ export function QuickAddToy({
   onClose: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const defaults = useShopSettings();
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -49,7 +51,7 @@ export function QuickAddToy({
         category: text("category") as Category,
         images: [],
         qualities: [{ quality: text("quality") as Quality, price, cost, stock }],
-        reorderLevel: 5,
+        reorderLevel: defaults.default_reorder_level,
         notes: "",
       },
 
@@ -83,7 +85,7 @@ export function QuickAddToy({
           </select>
         </Field>
         <Field label="Quality" className="col-span-3">
-          <select name="quality" className={inputCls} defaultValue="MIB">
+          <select name="quality" className={inputCls} defaultValue={defaults.default_quality}>
             {QUALITIES.map((q) => (
               <option key={q}>{q}</option>
             ))}

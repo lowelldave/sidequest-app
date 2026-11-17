@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Sidebar } from "@/components/Sidebar";
+import { AppShell } from "@/components/AppShell";
+import { Branding } from "@/components/Branding";
 import { SyncErrorBanner } from "@/components/status";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Toaster } from "@/components/toast";
@@ -42,10 +43,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body className="min-h-full md:flex">
-        <Sidebar />
-        <main className="min-w-0 flex-1 px-4 pt-6 pb-20 md:px-8 md:pt-8">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
-        </main>
+        <Branding />
+        <AppShell>{children}</AppShell>
         <ThemeToggle />
         <Toaster />
         <SyncErrorBanner />

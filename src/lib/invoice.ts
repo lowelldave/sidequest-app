@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDate } from "./format";
+import { getShopSettings, logoUrl } from "./shop";
 import { TRANSACTION_LABEL, type Toy, type Transaction } from "./types";
 
 /**
@@ -14,14 +15,13 @@ import { TRANSACTION_LABEL, type Toy, type Transaction } from "./types";
  * symbol, and text outside that range may not print.
  */
 
-const SHOP_NAME = "SideQuest: Toys and Figures";
-
 /** What the document calls itself and its total, by kind of transaction. */
 const WORDING = {
   sale: {
     title: "INVOICE",
     total: "Total",
-    footer: "Thank you for shopping at SideQuest: Toys and Figures.",
+    // Replaced by the footer set in Shop setup, if there is one.
+    footer: "Thank you for shopping with us.",
   },
   refund: {
     title: "REFUND RECEIPT",
@@ -49,18 +49,28 @@ function formatAmount(amount: number, currency: string): string {
     .replace(/ /g, " ");
 }
 
-/** The shop logo as a data URL, or null if it can't be loaded (the name is printed instead). */
-async function loadLogo(): Promise<string | null> {
+type Logo = { dataUrl: string; format: "PNG" | "JPEG"; width: number; height: number };
+
+/**
+ * The shop's logo (the one from Shop setup, or the built-in one) as a data URL
+ * with its size, or null if it can't be loaded (the name is printed instead).
+ */
+async function loadLogo(path: string): Promise<Logo | null> {
   try {
-    const response = await fetch("/logo.png");
+    const response = await fetch(path ? logoUrl(path) : "/logo.png");
     if (!response.ok) return null;
     const blob = await response.blob();
-    return await new Promise<string | null>((resolve) => {
+    const dataUrl = await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
+    if (!dataUrl) return null;
+    const bitmap = await createImageBitmap(blob);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return { dataUrl, format: blob.type === "image/png" ? "PNG" : "JPEG", ...size };
   } catch {
     return null;
   }
@@ -74,8 +84,13 @@ async function loadLogo(): Promise<string | null> {
 export async function downloadInvoice(txs: Transaction[], toys: Toy[], currency: string): Promise<string> {
   if (txs.length === 0) throw new Error("Nothing to invoice.");
   const first = txs[0];
-  const [{ jsPDF }, logo] = await Promise.all([import("jspdf"), loadLogo()]);
-  const words = WORDING[first.type];
+  const shop = getShopSettings();
+  const shopName = shop.name;
+  const [{ jsPDF }, logo] = await Promise.all([import("jspdf"), loadLogo(shop.logo_path)]);
+  const words = {
+    ...WORDING[first.type],
+    ...(first.type === "sale" && shop.invoice_footer.trim() ? { footer: shop.invoice_footer.trim() } : {}),
+  };
   const number = invoiceNumber(first);
   const hasDelivery = txs.some((t) => (t.delivery ?? 0) > 0);
 
@@ -104,16 +119,33 @@ export async function downloadInvoice(txs: Transaction[], toys: Toy[], currency:
   // ---- Header: shop on the left, document title on the right ----
   let headerBottom = 20;
   if (logo) {
-    const logoW = 42;
-    const logoH = logoW * (318 / 480); // the logo file is 480 x 318
-    doc.addImage(logo, "PNG", left, 16, logoW, logoH);
+    // Fit within 42 x 28 mm, keeping the logo's shape.
+    const fit = Math.min(42 / logo.width, 28 / logo.height);
+    const logoW = logo.width * fit;
+    const logoH = logo.height * fit;
+    doc.addImage(logo.dataUrl, logo.format, left, 16, logoW, logoH);
     headerBottom = 16 + logoH;
   } else {
-    text(SHOP_NAME, left, 24, { size: 14, bold: true });
+    text(shopName, left, 24, { size: 14, bold: true });
     headerBottom = 28;
   }
   text(words.title, right, 24, { size: 22, bold: true, align: "right" });
   text(number, right, 31, { size: 10, color: muted, align: "right" });
+
+  // The shop's contact details, from Shop setup.
+  const contact = [
+    ...shop.invoice_address.split("\n"),
+    [shop.invoice_phone, shop.invoice_email].filter((v) => v.trim()).join("  |  "),
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (contact.length > 0) {
+    if (logo) text(shopName, left, headerBottom + 6, { size: 10, bold: true });
+    const start = headerBottom + (logo ? 11 : 5);
+    contact.forEach((line, i) => text(line, left, start + i * 4.4, { size: 8.5, color: muted }));
+    headerBottom = start + (contact.length - 1) * 4.4 + 2;
+  }
+  headerBottom = Math.max(headerBottom, 34);
 
   // ---- Details block ----
   let y = headerBottom + 12;
@@ -256,7 +288,7 @@ export async function downloadInvoice(txs: Transaction[], toys: Toy[], currency:
     doc.setDrawColor(...rule);
     doc.line(left, pageH - 24, right, pageH - 24);
     text(words.footer, left, pageH - 17, { size: 9, color: muted });
-    text(pages > 1 ? `${SHOP_NAME}  |  Page ${page} of ${pages}` : SHOP_NAME, right, pageH - 17, {
+    text(pages > 1 ? `${shopName}  |  Page ${page} of ${pages}` : shopName, right, pageH - 17, {
       size: 9,
       color: muted,
       align: "right",

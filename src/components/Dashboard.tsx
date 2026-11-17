@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -52,6 +53,7 @@ export function Dashboard() {
 function DashboardView({ data }: { data: ShopData }) {
   const [range, setRange] = useState<Range>("month");
   const { currency } = data.settings;
+  const can = useCan();
   const start = rangeStart(range);
 
   const txs = data.transactions.filter((t) => t.date >= start);
@@ -178,9 +180,11 @@ function DashboardView({ data }: { data: ShopData }) {
               </div>
             ))}
           </dl>
-          <Link href="/inventory" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            Open inventory →
-          </Link>
+          {can("inventory.view") && (
+            <Link href="/inventory" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+              Open inventory →
+            </Link>
+          )}
         </Card>
 
         <Card className="p-5">
@@ -233,9 +237,11 @@ function DashboardView({ data }: { data: ShopData }) {
               ))}
             </ul>
           )}
-          <Link href="/transactions" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            All transactions →
-          </Link>
+          {can("transactions.view") && (
+            <Link href="/transactions" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+              All transactions →
+            </Link>
+          )}
         </Card>
       </div>
     </>

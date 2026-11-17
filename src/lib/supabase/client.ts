@@ -8,9 +8,8 @@ let client: SupabaseClient | null = null;
 /**
  * The Supabase client for code running in the browser.
  *
- * It comes from `@supabase/ssr` rather than plain `supabase-js` so that, once
- * sign-in is added, the session is kept in cookies the server can read too.
- * Until then it simply talks to the database with the publishable key.
+ * It comes from `@supabase/ssr` rather than plain `supabase-js` so that the
+ * sign-in session is kept in cookies, which the server (src/proxy.ts) reads too.
  */
 export function getSupabase(): SupabaseClient {
   if (client) return client;
