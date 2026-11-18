@@ -326,7 +326,17 @@ export function savePreferences(patch: Preferences) {
   if (state.status !== "signed-in" || !state.profile) return;
   const preferences = { ...state.profile.preferences, ...patch };
   set({ ...state, profile: { ...state.profile, preferences } });
-  void getSupabase().from("profiles").update({ preferences }).eq("id", state.profile.id);
+  void getSupabase()
+    .from("profiles")
+    .update({ preferences })
+    .eq("id", state.profile.id)
+    .then(({ error }) => {
+      // Don't leave a choice on screen that wasn't saved: reload what the account really has.
+      if (error) {
+        console.error("Couldn't save preferences:", error.message);
+        void refreshAccount();
+      }
+    });
 }
 
 /** Scales a picture to a 256 px square JPEG, uploads it as the profile picture and returns its path. */
