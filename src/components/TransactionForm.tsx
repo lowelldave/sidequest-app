@@ -4,7 +4,7 @@ import { useCan } from "@/lib/account";
 import { useState, type FormEvent } from "react";
 import { money, todayISO } from "@/lib/format";
 import { allocateDelivery } from "@/lib/restock";
-import { addRestock, addTransaction } from "@/lib/store";
+import { addRestock, addSale, addTransaction } from "@/lib/store";
 import {
   PAYMENT_METHODS,
   TRANSACTION_LABEL,
@@ -78,8 +78,10 @@ export function TransactionForm({
   const canAddToys = useCan()("inventory.create");
 
   const isRestock = type === "restock";
-  // Sales and refunds are for one toy; any extra lines wait, unseen, if you switch back and forth.
-  const shown = isRestock ? lines : lines.slice(0, 1);
+  // Sales and restocks can list several toys. A refund is for one; any extra lines
+  // wait, unseen, if you switch back and forth.
+  const multi = type !== "refund";
+  const shown = multi ? lines : lines.slice(0, 1);
 
   const toyOf = (line: Line) => toys.find((t) => t.id === line.toyId);
 
@@ -156,6 +158,34 @@ export function TransactionForm({
       return;
     }
 
+    if (type === "sale") {
+      const problem = addSale({
+        date,
+        payment,
+        note,
+        lines: lines.map((l) => ({
+          toyId: l.toyId,
+          quality: l.quality,
+          quantity: Number(l.quantity),
+          unitPrice: Number(l.unitPrice),
+        })),
+      });
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      const only = lines.length === 1 ? lines[0] : null;
+      toast({
+        tone: "success",
+        title: "Sale recorded",
+        message: only
+          ? `${only.quantity} × ${toyOf(only)?.name ?? "toy"} (${only.quality}) · ${money(subtotal, currency)}`
+          : `${lines.length} toys · ${totalUnits} units · ${money(subtotal, currency)}`,
+      });
+      onClose();
+      return;
+    }
+
     const line = lines[0];
     const toy = toyOf(line);
     const problem = addTransaction({
@@ -197,19 +227,20 @@ export function TransactionForm({
           ))}
         </div>
 
-        {isRestock ? (
+        {multi ? (
           <div className="col-span-2 space-y-3">
             {lines.map((line, i) => (
-              <RestockLine
+              <ItemLine
                 key={line.key}
                 index={i}
                 line={line}
                 toy={toyOf(line)}
                 toys={sorted}
+                type={type}
                 currency={currency}
                 canRemove={lines.length > 1}
                 finalUnitCost={
-                  delivery > 0 && num(line.quantity) > 0
+                  isRestock && delivery > 0 && num(line.quantity) > 0
                     ? { unit: num(line.unitPrice), perUnitDelivery: shares[i] / num(line.quantity) }
                     : null
                 }
@@ -294,12 +325,24 @@ export function TransactionForm({
               <dd className="tabular-nums">{money(grandTotal, currency)}</dd>
             </div>
           </dl>
+        ) : type === "sale" ? (
+          <p className="col-span-2 flex justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
+            <span className="text-muted">
+              {shown.length > 1 && (
+                <>
+                  {shown.length} toys, {totalUnits} {totalUnits === 1 ? "unit" : "units"} ·{" "}
+                </>
+              )}
+              Money in · stock decreases
+            </span>
+            <span className="font-semibold tabular-nums">{money(subtotal, currency)}</span>
+          </p>
         ) : (
           <p className="col-span-2 flex justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm">
             <span className="text-muted">
-              {type === "sale" ? "Money in" : "Money out"} ·{" "}
+              Money out ·{" "}
               {toyOf(shown[0])?.qualities.find((q) => q.quality === shown[0].quality)?.quality ?? "quality"}{" "}
-              stock {type === "sale" ? "decreases" : "increases"}
+              stock increases
             </span>
             <span className="font-semibold tabular-nums">
               {money(num(shown[0].quantity) * num(shown[0].unitPrice), currency)}
@@ -412,12 +455,13 @@ function SingleLine({
   );
 }
 
-/** One toy of a restock, in a card of its own. */
-function RestockLine({
+/** One toy of a sale or restock, in a card of its own. */
+function ItemLine({
   index,
   line,
   toy,
   toys,
+  type,
   currency,
   canRemove,
   finalUnitCost,
@@ -430,6 +474,7 @@ function RestockLine({
   line: Line;
   toy: Toy | undefined;
   toys: Toy[];
+  type: TransactionType;
   currency: string;
   canRemove: boolean;
   /** Set when a delivery cost applies: the bought unit cost and the delivery added to each unit. */
@@ -461,6 +506,8 @@ function RestockLine({
         toys={toys}
         value={line.toyId}
         onChange={(id) => onChoose({ toyId: id })}
+        // A sale needs something to sell.
+        isDisabled={type === "sale" ? (t) => totalStock(t) <= 0 : undefined}
         onAddNew={onAddNew}
         autoFocus
       />
@@ -474,7 +521,7 @@ function RestockLine({
           >
             {!toy && <option value="">—</option>}
             {toy?.qualities.map((q) => (
-              <option key={q.quality} value={q.quality}>
+              <option key={q.quality} value={q.quality} disabled={!isSelectable(q, type)}>
                 {q.quality} ({q.stock})
               </option>
             ))}
@@ -492,7 +539,7 @@ function RestockLine({
             required
           />
         </Field>
-        <Field label="Unit cost">
+        <Field label={type === "restock" ? "Unit cost" : "Unit price"}>
           <input
             type="number"
             min="0"

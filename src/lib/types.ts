@@ -78,6 +78,8 @@ export interface Transaction {
   batchId?: string;
   payment: PaymentMethod;
   note: string;
+  /** Name of the person who entered it, saved with the record. Empty if it isn't known. */
+  recordedBy: string;
 }
 
 export const EXPENSE_CATEGORIES = [
