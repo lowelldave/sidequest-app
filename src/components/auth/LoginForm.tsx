@@ -10,7 +10,7 @@ import {
   signIn,
   useAccount,
 } from "@/lib/account";
-import { Button, Field, FormError, inputCls } from "../ui";
+import { Button, Field, FormError, inputCls, PasswordInput } from "../ui";
 import { AuthCard } from "./AuthCard";
 
 type Mode = "checking" | "sign-in" | "forgot" | "setup";
@@ -122,9 +122,8 @@ export function LoginForm() {
             <input name="email" type="email" autoComplete="email" required className={inputCls} />
           </Field>
           <Field label="Password">
-            <input
+            <PasswordInput
               name="password"
-              type="password"
               autoComplete="new-password"
               minLength={MIN_PASSWORD_LENGTH}
               required
@@ -132,9 +131,8 @@ export function LoginForm() {
             />
           </Field>
           <Field label="Type it again">
-            <input
+            <PasswordInput
               name="confirm"
-              type="password"
               autoComplete="new-password"
               minLength={MIN_PASSWORD_LENGTH}
               required
@@ -186,7 +184,7 @@ export function LoginForm() {
           <input name="email" type="email" autoComplete="email" required autoFocus className={inputCls} />
         </Field>
         <Field label="Password">
-          <input name="password" type="password" autoComplete="current-password" required className={inputCls} />
+          <PasswordInput name="password" autoComplete="current-password" required className={inputCls} />
         </Field>
         <FormError message={error} />
         {notice && <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm">{notice}</p>}

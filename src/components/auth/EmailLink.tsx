@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { MIN_PASSWORD_LENGTH, setPassword, signInFromEmailLink } from "@/lib/account";
-import { Button, Field, FormError, inputCls } from "../ui";
+import { Button, Field, FormError, inputCls, PasswordInput } from "../ui";
 import { AuthCard } from "./AuthCard";
 
 /** Signs in from the email link once, however often React runs the effect. */
@@ -76,9 +76,8 @@ export function NewPasswordFromLink() {
     <AuthCard title="Choose a password" subtitle={`Use at least ${MIN_PASSWORD_LENGTH} characters.`}>
       <form onSubmit={submit} className="space-y-3">
         <Field label="New password">
-          <input
+          <PasswordInput
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required
@@ -87,9 +86,8 @@ export function NewPasswordFromLink() {
           />
         </Field>
         <Field label="Type it again">
-          <input
+          <PasswordInput
             name="confirm"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required

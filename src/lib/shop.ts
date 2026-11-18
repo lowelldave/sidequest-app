@@ -120,11 +120,32 @@ export function subscribeShopSettings(listener: () => void): () => void {
 
 export type ShopSettingsInput = Omit<ShopSettings, "updated_at">;
 
+/** The columns an admin may change; keep in step with the grants in supabase/migrations. */
+const EDITABLE_FIELDS: (keyof ShopSettingsInput)[] = [
+  "name",
+  "logo_path",
+  "accent",
+  "currency",
+  "invoice_address",
+  "invoice_phone",
+  "invoice_email",
+  "invoice_footer",
+  "default_reorder_level",
+  "default_quality",
+];
+
 /** Saves the shop settings (admin only; the database refuses anyone else). */
 export async function saveShopSettings(patch: Partial<ShopSettingsInput>) {
+  // Send only the columns the database lets an admin change. The settings we hold
+  // came from `select *`, so they also carry the table's `id`, which can't be updated
+  // (the database answers 403 if it's included).
+  const changes: Partial<ShopSettingsInput> = {};
+  for (const key of EDITABLE_FIELDS) {
+    if (key in patch) Object.assign(changes, { [key]: patch[key] });
+  }
   const { data, error } = await getSupabase()
     .from("shop_settings")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({ ...changes, updated_at: new Date().toISOString() })
     .eq("id", true)
     .select("*")
     .maybeSingle();
