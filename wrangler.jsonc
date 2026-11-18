@@ -8,6 +8,8 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  // Lets `wrangler preview` (run for branch builds) create a Preview of this Worker.
+  "previews": {},
   "observability": {
     "enabled": true
   }
