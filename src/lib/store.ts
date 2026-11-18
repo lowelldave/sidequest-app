@@ -568,6 +568,91 @@ export function addRestock(input: RestockInput): string | null {
   return null;
 }
 
+export type SaleInput = {
+  date: string;
+  payment: Transaction["payment"];
+  note: string;
+  lines: { toyId: string; quality: Quality; quantity: number; unitPrice: number }[];
+};
+
+/**
+ * Records a sale of one or more toys and takes them out of stock. Each line becomes
+ * its own transaction; with more than one line they share a `batchId`, so they show
+ * and print as one sale. Returns an error message, or null on success.
+ */
+export function addSale(input: SaleInput): string | null {
+  if (!data) return "The shop's data hasn't loaded yet.";
+  const s = data;
+  if (input.lines.length === 0) return "Add at least one toy to sell.";
+
+  const seen = new Set<string>();
+  for (const [i, line] of input.lines.entries()) {
+    const toy = s.toys.find((t) => t.id === line.toyId);
+    const item = input.lines.length > 1 ? `Item ${i + 1}: ` : "";
+    if (!toy) return `${item}Choose a toy to sell.`;
+    const variant = toy.qualities.find((q) => q.quality === line.quality);
+    if (!variant) return `${item}"${toy.name}" doesn't come in ${line.quality}.`;
+    if (!(line.quantity > 0) || !Number.isInteger(line.quantity)) {
+      return `${item}quantity of "${toy.name}" must be a whole number above zero.`;
+    }
+    if (!(line.unitPrice >= 0) || !Number.isFinite(line.unitPrice)) {
+      return `${item}unit price of "${toy.name}" can't be negative.`;
+    }
+    if (line.quantity > variant.stock) {
+      return `${item}only ${variant.stock} of "${toy.name}" (${variant.quality}) in stock.`;
+    }
+    const key = `${line.toyId}|${line.quality}`;
+    if (seen.has(key)) {
+      return `"${toy.name}" (${line.quality}) is listed twice. Combine them into one line.`;
+    }
+    seen.add(key);
+  }
+
+  // A one-toy sale stays a plain transaction, as before.
+  const batchId = input.lines.length > 1 ? crypto.randomUUID() : undefined;
+  const transactions: Transaction[] = input.lines.map((line) => {
+    const toy = s.toys.find((t) => t.id === line.toyId)!;
+    return {
+      id: crypto.randomUUID(),
+      date: input.date,
+      type: "sale",
+      toyId: toy.id,
+      toyName: toy.name,
+      quality: line.quality,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      amount: round2(line.quantity * line.unitPrice),
+      payment: input.payment,
+      note: input.note,
+      ...(batchId ? { batchId } : {}),
+    };
+  });
+
+  change(
+    (d) => {
+      let toys = d.toys;
+      for (const tx of transactions) toys = adjustStock(toys, tx.toyId, tx.quality, -tx.quantity);
+      return { ...d, transactions: [...transactions, ...d.transactions], toys };
+    },
+    () =>
+      getSupabase().rpc("record_sale", {
+        p_lines: transactions.map((tx) => ({
+          id: tx.id,
+          batch_id: tx.batchId ?? null,
+          date: tx.date,
+          toy_id: tx.toyId,
+          quality: tx.quality,
+          quantity: tx.quantity,
+          unit_price: tx.unitPrice,
+          payment: tx.payment,
+          note: tx.note,
+        })),
+      }),
+    "Couldn't record the sale.",
+  );
+  return null;
+}
+
 // ---------- Expenses ----------
 
 export type ExpenseInput = Omit<Expense, "id">;
