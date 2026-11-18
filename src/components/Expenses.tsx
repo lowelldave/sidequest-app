@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import { useState, type FormEvent } from "react";
 import { formatDate, money, todayISO } from "@/lib/format";
 import { addExpense, deleteExpense, updateExpense, useShop, type ExpenseInput } from "@/lib/store";
@@ -16,21 +17,22 @@ import {
   EmptyState,
   Field,
   FormError,
-  Loading,
   Modal,
   PageHeader,
   StatCard,
   inputCls,
 } from "./ui";
+import { ShopLoading } from "./status";
 
 export function Expenses() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <ExpensesView data={data} />;
 }
 
 function ExpensesView({ data }: { data: ShopData }) {
   const { currency } = data.settings;
+  const can = useCan();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [from, setFrom] = useState("");
@@ -71,9 +73,11 @@ function ExpensesView({ data }: { data: ShopData }) {
         title="Expenses"
         subtitle="Running costs of the shop, such as rent, wages and supplies."
         action={
-          <Button variant="primary" onClick={() => setEditing("new")}>
-            + Add expense
-          </Button>
+          can("expenses.create") && (
+            <Button variant="primary" onClick={() => setEditing("new")}>
+              + Add expense
+            </Button>
+          )
         }
       />
 
@@ -183,12 +187,16 @@ function ExpensesView({ data }: { data: ShopData }) {
                     {money(e.amount, currency)}
                   </td>
                   <td className="px-2 py-3 text-right whitespace-nowrap">
-                    <Button variant="ghost" className="h-8 px-2" onClick={() => setEditing(e)}>
-                      Edit
-                    </Button>
-                    <Button variant="danger" className="h-8 px-2" onClick={() => remove(e)}>
-                      Delete
-                    </Button>
+                    {can("expenses.edit") && (
+                      <Button variant="ghost" className="h-8 px-2" onClick={() => setEditing(e)}>
+                        Edit
+                      </Button>
+                    )}
+                    {can("expenses.delete") && (
+                      <Button variant="danger" className="h-8 px-2" onClick={() => remove(e)}>
+                        Delete
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,13 +1,4 @@
-export const CATEGORIES = [
-  "Action Figures",
-  "Dolls & Plush",
-  "Building Sets",
-  "Games & Puzzles",
-  "Vehicles & RC",
-  "Educational",
-  "Outdoor & Sports",
-  "Collectibles",
-] as const;
+export const CATEGORIES = ["Figures", "Plush", "Model Kits", "Collectibles"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
 /**
@@ -19,34 +10,33 @@ export const QUALITIES = ["MISB", "MIB", "BIB", "Loose", "Damaged"] as const;
 export type Quality = (typeof QUALITIES)[number];
 
 export const CATEGORY_EMOJI: Record<Category, string> = {
-  "Action Figures": "🦸",
-  "Dolls & Plush": "🧸",
-  "Building Sets": "🧱",
-  "Games & Puzzles": "🎲",
-  "Vehicles & RC": "🚗",
-  Educational: "🔬",
-  "Outdoor & Sports": "⚽",
+  Figures: "🦸",
+  Plush: "🧸",
+  "Model Kits": "🛠️",
   Collectibles: "🏆",
 };
 
-export const TOY_EMOJIS = [
-  "🧸", "🦸", "🤖", "🧱", "🎲", "🧩", "🚗", "🚂", "🚀", "✈️", "🚁", "🦖",
-  "🦄", "🪀", "🪁", "⚽", "🏀", "🛹", "🎨", "🔬", "🔭", "🎸", "🏆", "🪆",
-];
-
-export interface Toy {
-  id: string;
-  name: string;
-  sku: string;
-  category: Category;
+/** One quality grade of a toy, with its own price and stock. */
+export interface QualityStock {
   quality: Quality;
-  emoji: string;
   /** Selling price per unit */
   price: number;
   /** What the shop pays per unit */
   cost: number;
   stock: number;
-  /** Stock at or below this level counts as "low" */
+}
+
+export interface Toy {
+  id: string;
+  name: string;
+  sku: string;
+  manufacturer: string;
+  category: Category;
+  /** Ids of the toy's pictures, first one is the cover. The files are stored by lib/images.ts. */
+  images: string[];
+  /** The qualities this toy comes in (at least one, no repeats), each with its own stock. */
+  qualities: QualityStock[];
+  /** Total stock at or below this level counts as "low" */
   reorderLevel: number;
   notes: string;
   createdAt: string;
@@ -72,10 +62,20 @@ export interface Transaction {
   toyId: string;
   /** Kept so the record still reads well if the toy is later deleted */
   toyName: string;
+  /** Which quality of the toy this transaction was for */
+  quality: Quality;
   quantity: number;
+  /** What each unit was sold or bought for, not counting any delivery cost. */
   unitPrice: number;
-  /** quantity × unitPrice, always positive */
+  /**
+   * This line's share of a restock's delivery cost (see lib/restock.ts). It is
+   * included in `amount`, so a unit's final cost is `amount / quantity`.
+   */
+  delivery?: number;
+  /** quantity × unitPrice (+ delivery), always positive */
   amount: number;
+  /** Restock lines that arrived in one delivery share this id. */
+  batchId?: string;
   payment: PaymentMethod;
   note: string;
 }
@@ -117,10 +117,30 @@ export interface ShopData {
 
 export type StockStatus = "in" | "low" | "out";
 
+export function totalStock(toy: Toy): number {
+  return toy.qualities.reduce((sum, q) => sum + q.stock, 0);
+}
+
+/** Stock status of the toy as a whole, across all its qualities. */
 export function stockStatus(toy: Toy): StockStatus {
-  if (toy.stock <= 0) return "out";
-  if (toy.stock <= toy.reorderLevel) return "low";
+  const total = totalStock(toy);
+  if (total <= 0) return "out";
+  if (total <= toy.reorderLevel) return "low";
   return "in";
+}
+
+/** Lowest and highest selling price across a toy's qualities. */
+export function priceRange(toy: Toy): [min: number, max: number] {
+  const prices = toy.qualities.map((q) => q.price);
+  return [Math.min(...prices), Math.max(...prices)];
+}
+
+export function retailValue(toy: Toy): number {
+  return toy.qualities.reduce((sum, q) => sum + q.stock * q.price, 0);
+}
+
+export function costValue(toy: Toy): number {
+  return toy.qualities.reduce((sum, q) => sum + q.stock * q.cost, 0);
 }
 
 /** Money effect of a transaction: sales bring money in, refunds and restocks send it out. */

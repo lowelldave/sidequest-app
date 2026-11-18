@@ -1,5 +1,6 @@
 "use client";
 
+import { useCan } from "@/lib/account";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -15,11 +16,16 @@ import { useShop } from "@/lib/store";
 import {
   EXPENSE_CATEGORIES,
   TRANSACTION_LABEL,
+  costValue,
+  retailValue,
   signedAmount,
   stockStatus,
+  totalStock,
   type ShopData,
 } from "@/lib/types";
-import { Badge, Card, Loading, PageHeader, StatCard, inputCls } from "./ui";
+import { ToyCover } from "./images";
+import { Badge, Card, PageHeader, StatCard, inputCls } from "./ui";
+import { ShopLoading } from "./status";
 
 type Range = "month" | "30d" | "year" | "all";
 
@@ -40,13 +46,14 @@ function rangeStart(range: Range): string {
 
 export function Dashboard() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <DashboardView data={data} />;
 }
 
 function DashboardView({ data }: { data: ShopData }) {
   const [range, setRange] = useState<Range>("month");
   const { currency } = data.settings;
+  const can = useCan();
   const start = rangeStart(range);
 
   const txs = data.transactions.filter((t) => t.date >= start);
@@ -61,12 +68,12 @@ function DashboardView({ data }: { data: ShopData }) {
   const revenue = sales - refunds;
   const net = revenue - restocks - expenseTotal;
 
-  const units = data.toys.reduce((a, t) => a + t.stock, 0);
-  const retailValue = data.toys.reduce((a, t) => a + t.stock * t.price, 0);
-  const costValue = data.toys.reduce((a, t) => a + t.stock * t.cost, 0);
+  const units = data.toys.reduce((a, t) => a + totalStock(t), 0);
+  const retailTotal = data.toys.reduce((a, t) => a + retailValue(t), 0);
+  const costTotal = data.toys.reduce((a, t) => a + costValue(t), 0);
   const attention = data.toys
     .filter((t) => stockStatus(t) !== "in")
-    .sort((a, b) => a.stock - b.stock);
+    .sort((a, b) => totalStock(a) - totalStock(b));
 
   const months = recentMonthKeys(6).map((key) => {
     const monthTx = data.transactions.filter((t) => t.date.startsWith(key));
@@ -164,8 +171,8 @@ function DashboardView({ data }: { data: ShopData }) {
             {[
               ["Toys listed", String(data.toys.length)],
               ["Units in stock", String(units)],
-              ["Retail value", money(retailValue, currency)],
-              ["Cost value", money(costValue, currency)],
+              ["Retail value", money(retailTotal, currency)],
+              ["Cost value", money(costTotal, currency)],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-2">
                 <dt className="text-muted">{label}</dt>
@@ -173,9 +180,11 @@ function DashboardView({ data }: { data: ShopData }) {
               </div>
             ))}
           </dl>
-          <Link href="/inventory" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            Open inventory →
-          </Link>
+          {can("inventory.view") && (
+            <Link href="/inventory" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+              Open inventory →
+            </Link>
+          )}
         </Card>
 
         <Card className="p-5">
@@ -186,14 +195,16 @@ function DashboardView({ data }: { data: ShopData }) {
             <ul className="mt-3 space-y-2 text-sm">
               {attention.slice(0, 6).map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-2">
-                  <span className="truncate">
-                    <span aria-hidden="true">{t.emoji} </span>
-                    {t.name}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="size-7 shrink-0 overflow-hidden rounded-md border border-line">
+                      <ToyCover toy={t} compact />
+                    </span>
+                    <span className="truncate">{t.name}</span>
                   </span>
-                  {t.stock === 0 ? (
+                  {totalStock(t) === 0 ? (
                     <Badge tone="red">Out of stock</Badge>
                   ) : (
-                    <Badge tone="amber">{t.stock} left</Badge>
+                    <Badge tone="amber">{totalStock(t)} left</Badge>
                   )}
                 </li>
               ))}
@@ -226,9 +237,11 @@ function DashboardView({ data }: { data: ShopData }) {
               ))}
             </ul>
           )}
-          <Link href="/transactions" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
-            All transactions →
-          </Link>
+          {can("transactions.view") && (
+            <Link href="/transactions" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
+              All transactions →
+            </Link>
+          )}
         </Card>
       </div>
     </>

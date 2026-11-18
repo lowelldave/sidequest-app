@@ -1,51 +1,29 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { money, todayISO } from "@/lib/format";
-import { addToy, deleteToy, updateSettings, updateToy, useShop, type ToyInput } from "@/lib/store";
+import { useCan } from "@/lib/account";
+import { useState } from "react";
+import { money } from "@/lib/format";
+import { setInventoryView, useShop } from "@/lib/store";
 import {
   CATEGORIES,
   CATEGORY_EMOJI,
   QUALITIES,
-  TOY_EMOJIS,
+  priceRange,
+  retailValue,
   stockStatus,
+  totalStock,
   type Category,
   type Quality,
   type ShopData,
   type StockStatus,
   type Toy,
 } from "@/lib/types";
-import {
-  Badge,
-  Button,
-  Chip,
-  EmptyState,
-  Field,
-  FormError,
-  Loading,
-  Modal,
-  PageHeader,
-  inputCls,
-} from "./ui";
-
-const QUALITY_TONE: Record<Quality, "violet" | "blue" | "green" | "amber" | "red"> = {
-  MISB: "violet",
-  MIB: "blue",
-  BIB: "green",
-  Loose: "amber",
-  Damaged: "red",
-};
-
-const CATEGORY_TILE: Record<Category, string> = {
-  "Action Figures": "bg-red-100 dark:bg-red-950/60",
-  "Dolls & Plush": "bg-pink-100 dark:bg-pink-950/60",
-  "Building Sets": "bg-amber-100 dark:bg-amber-950/60",
-  "Games & Puzzles": "bg-violet-100 dark:bg-violet-950/60",
-  "Vehicles & RC": "bg-sky-100 dark:bg-sky-950/60",
-  Educational: "bg-teal-100 dark:bg-teal-950/60",
-  "Outdoor & Sports": "bg-lime-100 dark:bg-lime-950/60",
-  Collectibles: "bg-yellow-100 dark:bg-yellow-950/60",
-};
+import { ToyCover } from "./images";
+import { ToyDetail } from "./ToyDetail";
+import { ToyForm } from "./ToyForm";
+import { QualityBadges, StockBadge, costRange, priceText } from "./toy-parts";
+import { Button, Chip, EmptyState, Field, Modal, PageHeader, inputCls } from "./ui";
+import { ShopLoading } from "./status";
 
 const SORTS = {
   name: "Name (A–Z)",
@@ -60,18 +38,11 @@ type Sort = keyof typeof SORTS;
 const SORTERS: Record<Sort, (a: Toy, b: Toy) => number> = {
   name: (a, b) => a.name.localeCompare(b.name),
   newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
-  "price-asc": (a, b) => a.price - b.price,
-  "price-desc": (a, b) => b.price - a.price,
-  "stock-asc": (a, b) => a.stock - b.stock,
-  "stock-desc": (a, b) => b.stock - a.stock,
+  "price-asc": (a, b) => priceRange(a)[0] - priceRange(b)[0],
+  "price-desc": (a, b) => priceRange(b)[1] - priceRange(a)[1],
+  "stock-asc": (a, b) => totalStock(a) - totalStock(b),
+  "stock-desc": (a, b) => totalStock(b) - totalStock(a),
 };
-
-function StockBadge({ toy }: { toy: Toy }) {
-  const status = stockStatus(toy);
-  if (status === "out") return <Badge tone="red">Out of stock</Badge>;
-  if (status === "low") return <Badge tone="amber">Low · {toy.stock}</Badge>;
-  return <Badge tone="green">In stock · {toy.stock}</Badge>;
-}
 
 function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -79,12 +50,13 @@ function toggle<T>(list: T[], value: T): T[] {
 
 export function Inventory() {
   const data = useShop();
-  if (!data) return <Loading />;
+  if (!data) return <ShopLoading />;
   return <InventoryView data={data} />;
 }
 
 function InventoryView({ data }: { data: ShopData }) {
   const { currency, inventoryView: view } = data.settings;
+  const can = useCan();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<Category[]>([]);
   const [qualities, setQualities] = useState<Quality[]>([]);
@@ -92,19 +64,26 @@ function InventoryView({ data }: { data: ShopData }) {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState<Sort>("name");
-  // `null` = closed, "new" = adding, otherwise the toy being edited
-  const [editing, setEditing] = useState<Toy | "new" | null>(null);
+  const [adding, setAdding] = useState(false);
+  // The toy open in the details modal. Kept as an id so the modal always shows current data.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = data.toys.find((t) => t.id === selectedId);
 
   const q = query.trim().toLowerCase();
   const filtered = data.toys
     .filter(
       (t) =>
-        (!q || `${t.name} ${t.sku} ${t.notes}`.toLowerCase().includes(q)) &&
+        (!q || `${t.name} ${t.sku} ${t.manufacturer} ${t.notes}`.toLowerCase().includes(q)) &&
         (categories.length === 0 || categories.includes(t.category)) &&
-        (qualities.length === 0 || qualities.includes(t.quality)) &&
+        // A toy matches a quality or a price range if any one of its qualities does.
+        (qualities.length === 0 || t.qualities.some((x) => qualities.includes(x.quality))) &&
         (stock === "all" || stockStatus(t) === stock) &&
-        (minPrice === "" || t.price >= Number(minPrice)) &&
-        (maxPrice === "" || t.price <= Number(maxPrice)),
+        ((minPrice === "" && maxPrice === "") ||
+          t.qualities.some(
+            (x) =>
+              (minPrice === "" || x.price >= Number(minPrice)) &&
+              (maxPrice === "" || x.price <= Number(maxPrice)),
+          )),
     )
     .sort(SORTERS[sort]);
 
@@ -125,21 +104,17 @@ function InventoryView({ data }: { data: ShopData }) {
     setMaxPrice("");
   }
 
-  function remove(toy: Toy) {
-    if (confirm(`Delete "${toy.name}" from inventory? Past transactions are kept.`)) {
-      deleteToy(toy.id);
-    }
-  }
-
   return (
     <>
       <PageHeader
         title="Inventory"
-        subtitle="Every toy in the shop, by category and quality."
+        subtitle="Every toy in the shop. Select one to see its pictures and details."
         action={
-          <Button variant="primary" onClick={() => setEditing("new")}>
-            + Add toy
-          </Button>
+          can("inventory.create") && (
+            <Button variant="primary" onClick={() => setAdding(true)}>
+              + Add toy
+            </Button>
+          )
         }
       />
 
@@ -149,7 +124,7 @@ function InventoryView({ data }: { data: ShopData }) {
             <input
               type="search"
               className={inputCls}
-              placeholder="Name, SKU or notes"
+              placeholder="Name, SKU, manufacturer or notes"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -255,7 +230,7 @@ function InventoryView({ data }: { data: ShopData }) {
               key={v}
               type="button"
               aria-pressed={view === v}
-              onClick={() => updateSettings({ inventoryView: v })}
+              onClick={() => setInventoryView(v)}
               className={`h-8 rounded-md px-3 text-sm font-medium capitalize transition-colors ${
                 view === v ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
               }`}
@@ -277,91 +252,95 @@ function InventoryView({ data }: { data: ShopData }) {
           {filtered.map((t) => (
             <li
               key={t.id}
-              className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface"
+              className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-shadow focus-within:ring-2 focus-within:ring-accent hover:shadow-md"
             >
-              <div
-                className={`flex aspect-[4/3] items-center justify-center text-6xl ${CATEGORY_TILE[t.category]}`}
-                aria-hidden="true"
-              >
-                {t.emoji}
+              <div className="aspect-[4/3] w-full overflow-hidden">
+                <ToyCover toy={t} />
               </div>
               <div className="flex flex-1 flex-col p-3">
-                <p className="font-medium leading-snug">{t.name}</p>
-                <p className="mt-0.5 text-xs text-muted">
+                {/* The name is the button; its ::after stretches over the whole card. */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(t.id)}
+                  className="text-left font-medium leading-snug after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                >
+                  {t.name}
+                </button>
+                <p className="mt-0.5 text-xs text-muted">{t.manufacturer || "No manufacturer"}</p>
+                <p className="text-xs text-muted">
                   {t.category} · {t.sku}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
+                  <QualityBadges toy={t} />
+                </div>
+                <div className="mt-1.5">
                   <StockBadge toy={t} />
                 </div>
-                <div className="mt-auto flex items-end justify-between gap-2 pt-3">
-                  <p className="text-lg font-semibold tabular-nums">{money(t.price, currency)}</p>
-                  <div className="flex">
-                    <Button variant="ghost" className="h-8 px-2" onClick={() => setEditing(t)}>
-                      Edit
-                    </Button>
-                    <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
-                      Delete
-                    </Button>
-                  </div>
-                </div>
+                <p className="mt-auto pt-3 text-lg font-semibold whitespace-nowrap tabular-nums">
+                  {priceText(...priceRange(t), currency)}
+                </p>
               </div>
             </li>
           ))}
         </ul>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[1000px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
                 <th className="px-4 py-3 font-medium">Toy</th>
+                <th className="px-4 py-3 font-medium">Manufacturer</th>
                 <th className="px-4 py-3 font-medium">Category</th>
-                <th className="px-4 py-3 font-medium">Quality</th>
+                <th className="px-4 py-3 font-medium">Qualities (in stock)</th>
                 <th className="px-4 py-3 text-right font-medium">Price</th>
                 <th className="px-4 py-3 text-right font-medium">Cost</th>
                 <th className="px-4 py-3 font-medium">Stock</th>
                 <th className="px-4 py-3 text-right font-medium">Stock value</th>
-                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {filtered.map((t) => (
-                <tr key={t.id} className="border-b border-line last:border-0">
+                <tr
+                  key={t.id}
+                  onClick={() => setSelectedId(t.id)}
+                  className="cursor-pointer border-b border-line last:border-0 hover:bg-surface-2"
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <span
-                        className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-lg ${CATEGORY_TILE[t.category]}`}
-                        aria-hidden="true"
-                      >
-                        {t.emoji}
+                      <span className="size-10 shrink-0 overflow-hidden rounded-lg border border-line">
+                        <ToyCover toy={t} compact />
                       </span>
                       <div>
-                        <p className="font-medium">{t.name}</p>
+                        {/* A real button so the row can be opened from the keyboard. */}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(t.id)}
+                          className="text-left font-medium hover:underline"
+                        >
+                          {t.name}
+                        </button>
                         <p className="text-xs text-muted">{t.sku}</p>
                       </div>
                     </div>
                   </td>
+                  <td className="px-4 py-3">{t.manufacturer || <span className="text-muted">—</span>}</td>
                   <td className="px-4 py-3">{t.category}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
+                    <div className="flex flex-wrap gap-1.5">
+                      <QualityBadges toy={t} />
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{money(t.price, currency)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {priceText(...priceRange(t), currency)}
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted">
-                    {money(t.cost, currency)}
+                    {priceText(...costRange(t), currency)}
                   </td>
                   <td className="px-4 py-3">
                     <StockBadge toy={t} />
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {money(t.stock * t.price, currency)}
-                  </td>
-                  <td className="px-2 py-3 text-right whitespace-nowrap">
-                    <Button variant="ghost" className="h-8 px-2" onClick={() => setEditing(t)}>
-                      Edit
-                    </Button>
-                    <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
-                      Delete
-                    </Button>
+                    {money(retailValue(t), currency)}
                   </td>
                 </tr>
               ))}
@@ -370,141 +349,20 @@ function InventoryView({ data }: { data: ShopData }) {
         </div>
       )}
 
-      {editing && (
-        <ToyForm toy={editing === "new" ? null : editing} onClose={() => setEditing(null)} />
+      {adding && (
+        <Modal title="Add toy" onClose={() => setAdding(false)}>
+          <ToyForm toy={null} onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
+        </Modal>
+      )}
+
+      {selected && (
+        <ToyDetail
+          key={selected.id}
+          toy={selected}
+          currency={currency}
+          onClose={() => setSelectedId(null)}
+        />
       )}
     </>
-  );
-}
-
-function ToyForm({ toy, onClose }: { toy: Toy | null; onClose: () => void }) {
-  const [error, setError] = useState<string | null>(null);
-
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const text = (key: string) => String(fd.get(key) ?? "").trim();
-    const num = (key: string) => Number(fd.get(key));
-    const input: ToyInput = {
-      name: text("name"),
-      sku: text("sku"),
-      category: text("category") as Category,
-      quality: text("quality") as Quality,
-      emoji: text("emoji"),
-      price: num("price"),
-      cost: num("cost"),
-      stock: num("stock"),
-      reorderLevel: num("reorderLevel"),
-      notes: text("notes"),
-    };
-    if (!input.name) return setError("Give the toy a name.");
-    if ([input.price, input.cost, input.stock, input.reorderLevel].some((n) => Number.isNaN(n) || n < 0)) {
-      return setError("Price, cost and stock must be zero or more.");
-    }
-    if (!Number.isInteger(input.stock) || !Number.isInteger(input.reorderLevel)) {
-      return setError("Stock and low-stock level must be whole numbers.");
-    }
-    if (toy) updateToy(toy.id, input);
-    else addToy(input, todayISO());
-    onClose();
-  }
-
-  return (
-    <Modal title={toy ? "Edit toy" : "Add toy"} onClose={onClose}>
-      <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-        <Field label="Name" className="col-span-2">
-          <input name="name" className={inputCls} defaultValue={toy?.name} autoFocus required />
-        </Field>
-        <Field label="Category">
-          <select name="category" className={inputCls} defaultValue={toy?.category ?? CATEGORIES[0]}>
-            {CATEGORIES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Quality">
-          <select name="quality" className={inputCls} defaultValue={toy?.quality ?? "MIB"}>
-            {QUALITIES.map((q) => (
-              <option key={q}>{q}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="SKU">
-          <input name="sku" className={inputCls} defaultValue={toy?.sku} placeholder="Optional" />
-        </Field>
-        <Field label="Picture">
-          <select name="emoji" className={inputCls} defaultValue={toy?.emoji ?? TOY_EMOJIS[0]}>
-            {TOY_EMOJIS.map((em) => (
-              <option key={em}>{em}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Selling price">
-          <input
-            name="price"
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            className={inputCls}
-            defaultValue={toy?.price}
-            required
-          />
-        </Field>
-        <Field label="Unit cost">
-          <input
-            name="cost"
-            type="number"
-            min="0"
-            step="0.01"
-            inputMode="decimal"
-            className={inputCls}
-            defaultValue={toy?.cost ?? 0}
-            required
-          />
-        </Field>
-        <Field label="Stock on hand">
-          <input
-            name="stock"
-            type="number"
-            min="0"
-            step="1"
-            inputMode="numeric"
-            className={inputCls}
-            defaultValue={toy?.stock ?? 0}
-            required
-          />
-        </Field>
-        <Field label="Low-stock level">
-          <input
-            name="reorderLevel"
-            type="number"
-            min="0"
-            step="1"
-            inputMode="numeric"
-            className={inputCls}
-            defaultValue={toy?.reorderLevel ?? 5}
-            required
-          />
-        </Field>
-        <Field label="Notes" className="col-span-2">
-          <textarea
-            name="notes"
-            rows={2}
-            className={`${inputCls} h-auto py-2`}
-            defaultValue={toy?.notes}
-          />
-        </Field>
-        <div className="col-span-2">
-          <FormError message={error} />
-        </div>
-        <div className="col-span-2 flex justify-end gap-2">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit">
-            {toy ? "Save changes" : "Add toy"}
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
