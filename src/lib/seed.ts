@@ -142,6 +142,7 @@ export function createSeed(): ShopData {
         amount: Math.round(unitPrice * quantity * 100) / 100,
         payment,
         note,
+        recordedBy: "Sample data",
       };
     },
   );

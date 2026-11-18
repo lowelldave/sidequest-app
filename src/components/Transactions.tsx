@@ -387,6 +387,9 @@ function TransactionDetails({
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <Detail label="Date">{formatDate(selected.date)}</Detail>
           <Detail label="Payment">{selected.payment}</Detail>
+          <Detail label="Recorded by">
+            {selected.recordedBy || <span className="text-muted">Not recorded</span>}
+          </Detail>
           <Detail label={moneyIn ? "Money in" : "Money out"}>
             <span className="font-semibold tabular-nums">
               {moneyIn ? "+" : "−"}

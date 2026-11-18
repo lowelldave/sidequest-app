@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { getAccount, savePreferences, subscribeAccount } from "./account";
+import { displayName, getAccount, savePreferences, subscribeAccount } from "./account";
 import { removeImages } from "./images";
 import { allocateDelivery } from "./restock";
 import { createSeed } from "./seed";
@@ -168,6 +168,7 @@ type TransactionRow = {
   note: string;
   delivery: number | null;
   batch_id: string | null;
+  recorded_by: string | null;
 };
 
 type ExpenseRow = {
@@ -215,6 +216,7 @@ function toTransaction(row: TransactionRow): Transaction {
     amount: Number(row.amount),
     payment: row.payment,
     note: row.note,
+    recordedBy: row.recorded_by ?? "",
     ...(Number(row.delivery) > 0 ? { delivery: Number(row.delivery) } : {}),
     ...(row.batch_id ? { batchId: row.batch_id } : {}),
   };
@@ -387,7 +389,13 @@ export function deleteToy(id: string) {
 
 // ---------- Transactions ----------
 
-export type TransactionInput = Omit<Transaction, "id" | "toyName" | "amount">;
+export type TransactionInput = Omit<Transaction, "id" | "toyName" | "amount" | "recordedBy">;
+
+/** The signed-in person's name, shown at once on what they record (the database saves the same name). */
+function whoIsRecording(): string {
+  const account = getAccount();
+  return account.status === "signed-in" ? displayName(account.profile) : "";
+}
 
 /** Stock change caused by a transaction: sales take stock out, refunds and restocks put it back. */
 function stockDelta(type: Transaction["type"], quantity: number): number {
@@ -433,6 +441,7 @@ export function addTransaction(input: TransactionInput): string | null {
     id: crypto.randomUUID(),
     toyName: toy.name,
     amount: round2(input.quantity * input.unitPrice),
+    recordedBy: whoIsRecording(),
   };
   change(
     (d) => ({
@@ -538,6 +547,7 @@ export function addRestock(input: RestockInput): string | null {
       amount: round2(line.quantity * line.unitCost + shares[i]),
       payment: input.payment,
       note: input.note,
+      recordedBy: whoIsRecording(),
       batchId,
     };
   });
@@ -624,6 +634,7 @@ export function addSale(input: SaleInput): string | null {
       amount: round2(line.quantity * line.unitPrice),
       payment: input.payment,
       note: input.note,
+      recordedBy: whoIsRecording(),
       ...(batchId ? { batchId } : {}),
     };
   });
@@ -736,6 +747,7 @@ function seedRows(seed: ShopData): DataRows {
       amount: tx.amount,
       payment: tx.payment,
       note: tx.note,
+      recorded_by: tx.recordedBy,
       batch_id: tx.batchId ?? null,
     })),
     expenses: seed.expenses.map((e) => ({ ...e })),
