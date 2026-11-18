@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { MIN_PASSWORD_LENGTH, changeEmail, setPassword, signOut, useAccount } from "@/lib/account";
 import { getSupabase } from "@/lib/supabase/client";
 import { toast } from "../toast";
-import { Button, Field, FormError, inputCls } from "../ui";
+import { Button, Field, FormError, inputCls, PasswordInput } from "../ui";
 import { Section, SettingsStack } from "./parts";
 
 export function SecuritySettings() {
@@ -102,9 +102,8 @@ function PasswordSection() {
     <Section title="Password" description={`Use at least ${MIN_PASSWORD_LENGTH} characters.`}>
       <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
         <Field label="New password">
-          <input
+          <PasswordInput
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required
@@ -112,9 +111,8 @@ function PasswordSection() {
           />
         </Field>
         <Field label="Type it again">
-          <input
+          <PasswordInput
             name="confirm"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required

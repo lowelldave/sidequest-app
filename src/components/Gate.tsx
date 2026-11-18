@@ -14,7 +14,7 @@ import {
 } from "@/lib/account";
 import { firstAllowedPage, type Permission } from "@/lib/permissions";
 import { ShopLogo } from "./ShopLogo";
-import { Button, Field, FormError, inputCls } from "./ui";
+import { Button, Field, FormError, inputCls, PasswordInput } from "./ui";
 
 /**
  * Shows `children` only to someone signed in whose account is usable and whose
@@ -179,9 +179,8 @@ function ChooseOwnPassword() {
       <p>You signed in with a temporary password from the admin. Pick a new one only you know.</p>
       <form onSubmit={submit} className="mt-5 space-y-3 text-left">
         <Field label="New password">
-          <input
+          <PasswordInput
             name="password"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required
@@ -190,9 +189,8 @@ function ChooseOwnPassword() {
           />
         </Field>
         <Field label="Type it again">
-          <input
+          <PasswordInput
             name="confirm"
-            type="password"
             autoComplete="new-password"
             minLength={MIN_PASSWORD_LENGTH}
             required
