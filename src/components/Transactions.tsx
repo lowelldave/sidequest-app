@@ -3,7 +3,7 @@
 import { useCan } from "@/lib/account";
 import { useState, type ReactNode } from "react";
 import { formatDate, money } from "@/lib/format";
-import { downloadInvoice } from "@/lib/invoice";
+import { downloadInvoice, invoiceNumber } from "@/lib/invoice";
 import { deleteTransaction, useShop } from "@/lib/store";
 import { TransactionForm } from "./TransactionForm";
 import { toast } from "./toast";
@@ -55,26 +55,43 @@ function TransactionsView({ data }: { data: ShopData }) {
   // The transaction whose details are open.
   const [viewingId, setViewingId] = useState<string | null>(null);
 
+  // The table has one row per sale, refund or delivery: the toys of a multi-toy sale
+  // are separate transactions that share a batch id, and are listed in the details.
+  const groups: Transaction[][] = [];
+  {
+    const byKey = new Map<string, Transaction[]>();
+    for (const t of data.transactions) {
+      const key = t.batchId ?? t.id;
+      const group = byKey.get(key);
+      if (group) group.push(t);
+      else {
+        const created = [t];
+        byKey.set(key, created);
+        groups.push(created);
+      }
+    }
+  }
+
   const q = query.trim().toLowerCase();
-  const filtered = data.transactions
-    .filter(
-      (t) =>
-        (!q || `${t.toyName} ${t.quality} ${t.note}`.toLowerCase().includes(q)) &&
+  const filtered = groups
+    .filter((g) => {
+      const t = g[0]; // Type, date and payment are the same across a group.
+      return (
+        (!q ||
+          invoiceNumber(t).toLowerCase().includes(q) ||
+          g.some((x) => `${x.toyName} ${x.quality} ${x.note}`.toLowerCase().includes(q))) &&
         (types.length === 0 || types.includes(t.type)) &&
         (payment === "all" || t.payment === payment) &&
         (!from || t.date >= from) &&
-        (!to || t.date <= to),
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
-
-  const batchSizes = new Map<string, number>();
-  for (const t of data.transactions) {
-    if (t.batchId) batchSizes.set(t.batchId, (batchSizes.get(t.batchId) ?? 0) + 1);
-  }
+        (!to || t.date <= to)
+      );
+    })
+    .sort((a, b) => b[0].date.localeCompare(a[0].date));
+  const shownTransactions = filtered.flat();
 
   const total = (type: TransactionType) =>
-    filtered.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
-  const net = filtered.reduce((a, t) => a + signedAmount(t), 0);
+    shownTransactions.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
+  const net = shownTransactions.reduce((a, t) => a + signedAmount(t), 0);
   const filtersActive = q !== "" || types.length > 0 || payment !== "all" || !!from || !!to;
 
   /** A transaction and the others recorded with it (the toys of one sale or delivery). */
@@ -116,6 +133,25 @@ function TransactionsView({ data }: { data: ShopData }) {
     }
   }
 
+  /** Deletes a whole row: every toy of the sale or delivery. */
+  function removeGroup(group: Transaction[]) {
+    if (group.length === 1) return remove(group[0]);
+    const t = group[0];
+    if (
+      confirm(
+        `Delete this ${t.type} of ${group.length} toys (${invoiceNumber(t)})? Stock will be adjusted back for all of them.`,
+      )
+    ) {
+      if (viewingId && group.some((x) => x.id === viewingId)) setViewingId(null);
+      for (const x of group) deleteTransaction(x.id);
+      toast({
+        tone: "success",
+        title: "Transaction deleted",
+        message: `${invoiceNumber(t)}: ${group.length} toys. Stock adjusted back.`,
+      });
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -143,7 +179,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             <input
               type="search"
               className={inputCls}
-              placeholder="Toy, quality or note"
+              placeholder="Invoice number, toy, quality or note"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -184,7 +220,7 @@ function TransactionsView({ data }: { data: ShopData }) {
       </div>
 
       <p className="my-4 text-sm text-muted" aria-live="polite">
-        Showing {filtered.length} of {data.transactions.length} transactions
+        Showing {filtered.length} of {groups.length} transactions
         {filtersActive && (
           <>
             {" · "}
@@ -206,7 +242,7 @@ function TransactionsView({ data }: { data: ShopData }) {
       </p>
 
       {filtered.length === 0 ? (
-        data.transactions.length === 0 ? (
+        groups.length === 0 ? (
           <EmptyState
             title="No transactions yet"
             hint="Record your first sale, refund or restock. Toys that aren't in the inventory yet can be added as you go."
@@ -216,90 +252,76 @@ function TransactionsView({ data }: { data: ShopData }) {
         )
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[960px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
+                <th className="px-4 py-3 font-medium">Invoice no.</th>
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Toy</th>
-                <th className="px-4 py-3 font-medium">Quality</th>
-                <th className="px-4 py-3 text-right font-medium">Qty</th>
-                <th className="px-4 py-3 text-right font-medium">Unit price / cost</th>
+                <th className="px-4 py-3 font-medium">Items</th>
                 <th className="px-4 py-3 text-right font-medium">Amount</th>
                 <th className="px-4 py-3 font-medium">Payment</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => (
-                <tr
-                  key={t.id}
-                  onClick={() => setViewingId(t.id)}
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setViewingId(t.id);
-                    }
-                  }}
-                  tabIndex={0}
-                  aria-label={`${TRANSACTION_LABEL[t.type]} of ${t.toyName}, ${formatDate(t.date)}. Show details`}
-                  className="cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-surface-2 focus-visible:bg-surface-2"
-                >
-                  <td className="px-4 py-3 whitespace-nowrap">{formatDate(t.date)}</td>
-                  <td className="px-4 py-3">
-                    <Badge tone={TYPE_TONE[t.type]}>{TRANSACTION_LABEL[t.type]}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium">{t.toyName}</p>
-                    {t.batchId && (batchSizes.get(t.batchId) ?? 0) > 1 && (
-                      <p className="text-xs text-muted">
-                        One of {batchSizes.get(t.batchId)} toys in the same{" "}
-                        {t.type === "sale" ? "sale" : "delivery"}
-                      </p>
-                    )}
-                    {t.note && <p className="text-xs text-muted">{t.note}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{t.quantity}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">
-                    {t.delivery ? (
-                      <>
-                        {/* Final unit cost, with the delivery share included. */}
-                        <span className="text-foreground">{money(t.amount / t.quantity, currency)}</span>
-                        <span className="block text-xs">
-                          {money(t.unitPrice, currency)} + {money(t.delivery / t.quantity, currency)} delivery
-                        </span>
-                      </>
-                    ) : (
-                      money(t.unitPrice, currency)
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium tabular-nums">
-                    {signedAmount(t) > 0 ? "+" : "−"}
-                    {money(t.amount, currency)}
-                  </td>
-                  <td className="px-4 py-3 text-muted">{t.payment}</td>
-                  {/* The buttons do their own thing; a click on them doesn't open the details. */}
-                  <td className="px-2 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="ghost"
-                      className="h-8 px-2"
-                      onClick={() => void invoice(t)}
-                      aria-label={`Download invoice for ${t.toyName}, ${formatDate(t.date)}`}
-                    >
-                      Invoice
-                    </Button>
-                    {can("transactions.delete") && (
-                      <Button variant="danger" className="h-8 px-2" onClick={() => remove(t)}>
-                        Delete
+              {filtered.map((group) => {
+                const t = group[0];
+                const units = group.reduce((a, x) => a + x.quantity, 0);
+                const amount = group.reduce((a, x) => a + x.amount, 0);
+                const number = invoiceNumber(t);
+                return (
+                  <tr
+                    key={t.batchId ?? t.id}
+                    onClick={() => setViewingId(t.id)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setViewingId(t.id);
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-label={`${TRANSACTION_LABEL[t.type]} ${number}, ${formatDate(t.date)}. Show details`}
+                    className="cursor-pointer border-b border-line transition-colors last:border-0 hover:bg-surface-2 focus-visible:bg-surface-2"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{number}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(t.date)}</td>
+                    <td className="px-4 py-3">
+                      <Badge tone={TYPE_TONE[t.type]}>{TRANSACTION_LABEL[t.type]}</Badge>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-muted">
+                      {group.length} {group.length === 1 ? "toy" : "toys"} · {units} {units === 1 ? "unit" : "units"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                      {signedAmount(t) > 0 ? "+" : "−"}
+                      {money(amount, currency)}
+                    </td>
+                    <td className="px-4 py-3 text-muted">{t.payment}</td>
+                    {/* The buttons do their own thing; a click on them doesn't open the details. */}
+                    <td className="px-2 py-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        className="h-8 px-2"
+                        onClick={() => void invoice(t)}
+                        aria-label={`Download invoice ${number}`}
+                      >
+                        Invoice
                       </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                      {can("transactions.delete") && (
+                        <Button
+                          variant="danger"
+                          className="h-8 px-2"
+                          onClick={() => removeGroup(group)}
+                          aria-label={`Delete ${number}`}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -354,6 +376,7 @@ function TransactionDetails({
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={TYPE_TONE[selected.type]}>{TRANSACTION_LABEL[selected.type]}</Badge>
+          <span className="font-mono text-sm">{invoiceNumber(selected)}</span>
           {several && (
             <span className="text-sm text-muted">
               {group.length} toys · {units} units in one {selected.type === "sale" ? "sale" : "delivery"}
