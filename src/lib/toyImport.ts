@@ -4,6 +4,9 @@ import { CATEGORIES, QUALITIES, type Category, type Quality, type QualityStock, 
 /** The most toys one import can add or change, matching the database's limit. */
 export const MAX_IMPORT_TOYS = 500;
 
+/** The low-stock level for an imported toy whose row leaves reorder_level blank. */
+export const IMPORT_DEFAULT_REORDER_LEVEL = 1;
+
 /** Each row of the file is one quality of one toy; rows of the same toy are grouped. */
 export const IMPORT_COLUMNS = [
   "name",

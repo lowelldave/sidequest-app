@@ -6,6 +6,7 @@ import { money } from "@/lib/format";
 import { useShopSettings } from "@/lib/shop";
 import { importToys } from "@/lib/store";
 import {
+  IMPORT_DEFAULT_REORDER_LEVEL,
   MAX_IMPORT_TOYS,
   SAMPLE_IMPORT_FILENAME,
   analyseToyCsv,
@@ -74,7 +75,7 @@ export function ImportToys({
       return setError(`Couldn't read "${file.name}".`);
     }
     const result = analyseToyCsv(text, toys, {
-      reorderLevel: shop.default_reorder_level,
+      reorderLevel: IMPORT_DEFAULT_REORDER_LEVEL,
       quality: shop.default_quality,
     });
     setAnalysis(result);
@@ -252,7 +253,7 @@ export function ImportToys({
               default to 0. Stock is set to the number in the file; record deliveries in Transactions.
             </li>
             <li>
-              <strong className="text-foreground">reorder_level</strong> blank means {shop.default_reorder_level}.
+              <strong className="text-foreground">reorder_level</strong> blank means {IMPORT_DEFAULT_REORDER_LEVEL}.
               Up to {MAX_IMPORT_TOYS} toys per file.
             </li>
           </ul>
