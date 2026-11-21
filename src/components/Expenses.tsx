@@ -18,6 +18,7 @@ import {
   Field,
   FormError,
   Modal,
+  ModalActions,
   PageHeader,
   StatCard,
   inputCls,
@@ -292,12 +293,12 @@ function ExpenseForm({ expense, onClose }: { expense: Expense | null; onClose: (
         <div className="col-span-2">
           <FormError message={error} />
         </div>
-        <div className="col-span-2 flex justify-end gap-2">
+        <ModalActions className="col-span-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit">
             {expense ? "Save changes" : "Add expense"}
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
   );

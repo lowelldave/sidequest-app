@@ -16,7 +16,7 @@ import {
 } from "@/lib/admin";
 import { Avatar } from "../Avatar";
 import { toast } from "../toast";
-import { Badge, Button, Chip, Field, FormError, Modal, inputCls } from "../ui";
+import { Badge, Button, Chip, Field, FormError, Modal, ModalActions, inputCls } from "../ui";
 import { Section } from "./parts";
 
 export function PeopleSettings() {
@@ -230,11 +230,11 @@ function AddPerson({ roles, onClose, onAdded }: { roles: Role[]; onClose: () => 
             and sign in.
           </p>
         )}
-        <div className="mt-5 flex justify-end">
+        <ModalActions>
           <Button variant="primary" onClick={onAdded}>
             Done
           </Button>
-        </div>
+        </ModalActions>
       </Modal>
     );
   }
@@ -242,7 +242,7 @@ function AddPerson({ roles, onClose, onAdded }: { roles: Role[]; onClose: () => 
   return (
     <Modal title="Add person" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Chip active={method === "password"} onClick={() => setMethod("password")}>
             Temporary password
           </Chip>
@@ -285,12 +285,12 @@ function AddPerson({ roles, onClose, onAdded }: { roles: Role[]; onClose: () => 
           </Field>
         )}
         <FormError message={error} />
-        <div className="flex justify-end gap-2 pt-1">
+        <ModalActions>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" disabled={busy}>
             {busy ? "Adding…" : method === "password" ? "Create account" : "Send invitation"}
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
   );
@@ -322,11 +322,11 @@ function ResetPassword({ person, onClose, onDone }: { person: Person; onClose: (
         <div className="space-y-3 text-sm">
           <p>Their new temporary password is below. They&apos;ll choose their own the next time they sign in.</p>
           <PasswordToShare password={password} />
-          <div className="flex justify-end pt-2">
+          <ModalActions>
             <Button variant="primary" onClick={onDone}>
               Done
             </Button>
-          </div>
+          </ModalActions>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-3">
@@ -346,12 +346,12 @@ function ResetPassword({ person, onClose, onDone }: { person: Person; onClose: (
             </div>
           </Field>
           <FormError message={error} />
-          <div className="flex justify-end gap-2">
+          <ModalActions>
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="primary" type="submit" disabled={busy}>
               {busy ? "Saving…" : "Set temporary password"}
             </Button>
-          </div>
+          </ModalActions>
         </form>
       )}
     </Modal>

@@ -17,7 +17,7 @@ import {
 } from "@/lib/toyImport";
 import type { QualityStock, Toy } from "@/lib/types";
 import { toast } from "./toast";
-import { Button, FormError, Modal } from "./ui";
+import { Button, FormError, Modal, ModalActions } from "./ui";
 
 /** How many problem rows to list before "and N more". */
 const PROBLEMS_SHOWN = 8;
@@ -145,7 +145,8 @@ export function ImportToys({
             )}
           </div>
 
-          <ul className="max-h-[50dvh] divide-y divide-line overflow-y-auto rounded-lg border border-line">
+          {/* The dialog scrolls as a whole on a phone; only a wide screen gets a list with its own scroll. */}
+          <ul className="divide-y divide-line rounded-lg border border-line sm:max-h-[50dvh] sm:overflow-y-auto">
             {duplicates.map((d) => {
               const checked = kept.has(d);
               return (
@@ -153,7 +154,7 @@ export function ImportToys({
                   <label className="flex cursor-pointer items-start gap-3">
                     <input
                       type="checkbox"
-                      className="mt-1 size-4 accent-[var(--accent)]"
+                      className="mt-0.5 size-5 shrink-0 accent-[var(--accent)] sm:mt-1 sm:size-4"
                       checked={checked}
                       disabled={!canUpdate}
                       onChange={() => toggleKept(d)}
@@ -173,9 +174,17 @@ export function ImportToys({
                         <span className="font-medium text-foreground">In the file:</span>{" "}
                         {qualitiesText(d.imported.qualities, currency)}
                       </span>
+                      {/* On a phone the choice is written under the toy (the pill at the side is for wider screens). */}
+                      <span
+                        className={`mt-1 block text-xs font-medium sm:hidden ${
+                          checked ? "text-muted" : "text-amber-800 dark:text-amber-300"
+                        }`}
+                      >
+                        {checked ? "Keep current toy" : "Replace with the file's"}
+                      </span>
                     </span>
                     <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      className={`hidden shrink-0 rounded-full px-2 py-0.5 text-xs font-medium sm:inline ${
                         checked ? "bg-surface-2 text-muted" : "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300"
                       }`}
                     >
@@ -188,23 +197,25 @@ export function ImportToys({
           </ul>
 
           <FormError message={error} />
-          <div className="flex flex-wrap justify-between gap-2">
-            <Button onClick={() => setStep("file")} disabled={busy}>
-              Back
+          <ModalActions
+            className="mt-0!"
+            start={
+              <Button onClick={() => setStep("file")} disabled={busy}>
+                Back
+              </Button>
+            }
+          >
+            <Button onClick={onClose} disabled={busy}>
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              <Button onClick={onClose} disabled={busy}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={() => void run()} disabled={busy || toSave === 0}>
-                {busy
-                  ? "Importing…"
-                  : toSave === 0
-                    ? "Nothing to import"
-                    : `Import ${toSave} ${toSave === 1 ? "toy" : "toys"}`}
-              </Button>
-            </div>
-          </div>
+            <Button variant="primary" onClick={() => void run()} disabled={busy || toSave === 0}>
+              {busy
+                ? "Importing…"
+                : toSave === 0
+                  ? "Nothing to import"
+                  : `Import ${toSave} ${toSave === 1 ? "toy" : "toys"}`}
+            </Button>
+          </ModalActions>
         </div>
       </Modal>
     );
@@ -288,7 +299,7 @@ export function ImportToys({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <ModalActions className="mt-0!">
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
@@ -301,7 +312,7 @@ export function ImportToys({
               {busy ? "Importing…" : toSave === 0 ? "Import" : `Import ${toSave} ${toSave === 1 ? "toy" : "toys"}`}
             </Button>
           )}
-        </div>
+        </ModalActions>
       </div>
     </Modal>
   );

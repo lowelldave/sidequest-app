@@ -26,6 +26,7 @@ import {
   EmptyState,
   Field,
   Modal,
+  ModalActions,
   PageHeader,
   QUALITY_TONE,
   StatCard,
@@ -428,7 +429,62 @@ function TransactionDetails({
           )}
         </dl>
 
-        <div className="overflow-x-auto rounded-lg border border-line">
+        {/* On a phone: one small card per toy, then the totals. The table is for wider screens. */}
+        <div className="sm:hidden">
+          <ul className="space-y-2">
+            {group.map((t) => (
+              <li
+                key={t.id}
+                aria-current={several && t.id === selected.id ? "true" : undefined}
+                className={`rounded-lg border border-line p-3 ${several && t.id === selected.id ? "bg-surface-2" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{t.toyName}</p>
+                    <div className="mt-1">
+                      <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
+                    </div>
+                  </div>
+                  <p className="shrink-0 font-semibold tabular-nums">{money(t.amount, currency)}</p>
+                </div>
+                <p className="mt-2 text-xs text-muted tabular-nums">
+                  {t.quantity} × {money(t.unitPrice, currency)}
+                  {(t.delivery ?? 0) > 0 && <> + {money(t.delivery ?? 0, currency)} delivery</>}
+                </p>
+                {canDelete && several && (
+                  <Button
+                    variant="danger"
+                    className="mt-2 h-9 w-full"
+                    onClick={() => onDelete(t)}
+                    aria-label={`Delete ${t.toyName} (${t.quality}) from this ${t.type}`}
+                  >
+                    Delete this toy
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <dl className="mt-3 space-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm">
+            {hasDelivery && (
+              <>
+                <div className="flex justify-between text-muted">
+                  <dt>Items</dt>
+                  <dd className="tabular-nums">{money(total - delivery, currency)}</dd>
+                </div>
+                <div className="flex justify-between text-muted">
+                  <dt>Delivery</dt>
+                  <dd className="tabular-nums">{money(delivery, currency)}</dd>
+                </div>
+              </>
+            )}
+            <div className="flex justify-between font-semibold">
+              <dt>Total</dt>
+              <dd className="tabular-nums">{money(total, currency)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-lg border border-line sm:block">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
@@ -499,21 +555,21 @@ function TransactionDetails({
           </table>
         </div>
 
-        <div className="flex flex-wrap justify-between gap-2">
-          <div>
-            {canDelete && !several && (
+        <ModalActions
+          className="mt-0!"
+          start={
+            canDelete && !several ? (
               <Button variant="danger" onClick={() => onDelete(selected)}>
                 Delete transaction
               </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={onClose}>Close</Button>
-            <Button variant="primary" onClick={onInvoice}>
-              Download invoice
-            </Button>
-          </div>
-        </div>
+            ) : undefined
+          }
+        >
+          <Button onClick={onClose}>Close</Button>
+          <Button variant="primary" onClick={onInvoice}>
+            Download invoice
+          </Button>
+        </ModalActions>
       </div>
     </Modal>
   );

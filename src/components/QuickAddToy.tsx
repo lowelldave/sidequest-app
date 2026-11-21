@@ -5,7 +5,7 @@ import { useShopSettings } from "@/lib/shop";
 import { addToy } from "@/lib/store";
 import { CATEGORIES, QUALITIES, type Category, type Quality, type Toy, type TransactionType } from "@/lib/types";
 import { toast } from "./toast";
-import { Button, Field, FormError, Modal, inputCls } from "./ui";
+import { Button, Field, FormError, Modal, ModalActions, inputCls } from "./ui";
 
 /**
  * A short form for adding a toy to the inventory without leaving a transaction.
@@ -91,7 +91,7 @@ export function QuickAddToy({
             ))}
           </select>
         </Field>
-        <Field label="Selling price" className="col-span-2">
+        <Field label="Selling price" className="col-span-3 sm:col-span-2">
           <input
             name="price"
             type="number"
@@ -104,7 +104,7 @@ export function QuickAddToy({
             required
           />
         </Field>
-        <Field label="Unit cost" className="col-span-2">
+        <Field label="Unit cost" className="col-span-3 sm:col-span-2">
           <input
             name="cost"
             type="number"
@@ -116,7 +116,7 @@ export function QuickAddToy({
             required
           />
         </Field>
-        <Field label="Starting stock" className="col-span-2">
+        <Field label="Starting stock" className="col-span-6 sm:col-span-2">
           <input
             name="stock"
             type="number"
@@ -138,12 +138,12 @@ export function QuickAddToy({
         <div className="col-span-6">
           <FormError message={error} />
         </div>
-        <div className="col-span-6 flex justify-end gap-2">
+        <ModalActions className="col-span-6">
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit">
             Add to inventory
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
   );

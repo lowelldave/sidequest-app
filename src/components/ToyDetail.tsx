@@ -8,7 +8,7 @@ import { CATEGORY_EMOJI, costValue, retailValue, totalStock, type Toy } from "@/
 import { ImageCarousel } from "./images";
 import { StockBadge } from "./toy-parts";
 import { ToyForm } from "./ToyForm";
-import { Badge, Button, Modal, QUALITY_TONE } from "./ui";
+import { Badge, Button, Modal, ModalActions, QUALITY_TONE } from "./ui";
 
 /**
  * Everything about one toy in a modal: its pictures as a carousel, its details,
@@ -114,20 +114,22 @@ export function ToyDetail({
           </div>
 
           {(can("inventory.delete") || can("inventory.edit")) && (
-            <div className="mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
-              {can("inventory.delete") ? (
-                <Button variant="danger" onClick={remove}>
-                  Delete
-                </Button>
-              ) : (
-                <span />
-              )}
+            <ModalActions
+              className="border-t border-line pt-4"
+              start={
+                can("inventory.delete") ? (
+                  <Button variant="danger" onClick={remove}>
+                    Delete
+                  </Button>
+                ) : undefined
+              }
+            >
               {can("inventory.edit") && (
                 <Button variant="primary" onClick={() => setEditing(true)}>
                   Edit
                 </Button>
               )}
-            </div>
+            </ModalActions>
           )}
         </>
       )}

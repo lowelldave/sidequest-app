@@ -271,7 +271,9 @@ function InventoryView({ data }: { data: ShopData }) {
           <EmptyState title="No toys match these filters" hint="Try loosening or clearing the filters." />
         )
       ) : view === "gallery" ? (
-        <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+        // On a phone each card is small and shows only the name, stock and price; the
+        // manufacturer, category, SKU and quality badges appear from the "sm" size up.
+        <ul className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
           {paging.pageItems.map((t) => (
             <li
               key={t.id}
@@ -280,26 +282,26 @@ function InventoryView({ data }: { data: ShopData }) {
               <div className="aspect-[4/3] w-full overflow-hidden">
                 <ToyCover toy={t} />
               </div>
-              <div className="flex flex-1 flex-col p-3">
+              <div className="flex flex-1 flex-col gap-1 p-2.5 sm:gap-0 sm:p-3">
                 {/* The name is the button; its ::after stretches over the whole card. */}
                 <button
                   type="button"
                   onClick={() => setSelectedId(t.id)}
-                  className="text-left font-medium leading-snug after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                  className="line-clamp-2 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none sm:text-base"
                 >
                   {t.name}
                 </button>
-                <p className="mt-0.5 text-xs text-muted">{t.manufacturer || "No manufacturer"}</p>
-                <p className="text-xs text-muted">
+                <p className="mt-0.5 hidden text-xs text-muted sm:block">{t.manufacturer || "No manufacturer"}</p>
+                <p className="hidden text-xs text-muted sm:block">
                   {t.category} · {t.sku}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 hidden flex-wrap gap-1.5 sm:flex">
                   <QualityBadges toy={t} />
                 </div>
-                <div className="mt-1.5">
+                <div className="sm:mt-1.5">
                   <StockBadge toy={t} />
                 </div>
-                <p className="mt-auto pt-3 text-lg font-semibold whitespace-nowrap tabular-nums">
+                <p className="mt-auto pt-1 text-base font-semibold whitespace-nowrap tabular-nums sm:pt-3 sm:text-lg">
                   {priceText(...priceRange(t), currency)}
                 </p>
               </div>
