@@ -46,13 +46,21 @@ export function FilterPanel({
 
   return (
     <section aria-label="Search and filters" className={`rounded-xl border border-line bg-surface ${className}`}>
-      <div className="flex items-center gap-1 pr-2">
+      {/*
+        The whole header row is the hover area. Its corners follow the box's: only the top
+        ones while the box is open (the content sits right under it), all four once folded.
+      */}
+      <div
+        className={`flex items-center rounded-t-xl transition-[background-color,border-radius] duration-300 ease-out hover:bg-surface-2 motion-reduce:transition-none ${
+          open ? "" : "rounded-b-xl"
+        }`}
+      >
         <button
           type="button"
           onClick={toggle}
           aria-expanded={open}
           aria-controls={bodyId}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium hover:bg-surface-2"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-[inherit] px-4 py-3 text-left text-sm font-medium focus-visible:-outline-offset-2"
         >
           <svg
             viewBox="0 0 20 20"
@@ -80,7 +88,7 @@ export function FilterPanel({
           <button
             type="button"
             onClick={onReset}
-            className="h-8 shrink-0 rounded-lg px-3 text-xs font-medium text-accent hover:bg-surface-2"
+            className="mr-2 h-8 shrink-0 rounded-lg px-3 text-xs font-medium text-accent hover:bg-line/60"
           >
             Reset filters
           </button>
