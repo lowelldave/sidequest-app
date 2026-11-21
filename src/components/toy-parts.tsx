@@ -10,17 +10,37 @@ export function StockBadge({ toy }: { toy: Toy }) {
   return <Badge tone="green">In stock · {totalStock(toy)}</Badge>;
 }
 
-/** One badge per quality the toy comes in, with how many are in stock. */
-export function QualityBadges({ toy }: { toy: Toy }) {
+/**
+ * One badge per quality the toy comes in, with how many are in stock. `compact` is the
+ * shortest form, for tight spaces: only the stock number, in the quality's colour. The
+ * quality's name is then in the tooltip and read out by screen readers, not shown.
+ */
+export function QualityBadges({ toy, compact = false }: { toy: Toy; compact?: boolean }) {
   return (
     <>
-      {toy.qualities.map((q) => (
-        <span key={q.quality} className={q.stock === 0 ? "opacity-50" : undefined}>
-          <Badge tone={QUALITY_TONE[q.quality]}>
-            {q.quality} · {q.stock}
-          </Badge>
-        </span>
-      ))}
+      {toy.qualities.map((q) => {
+        const stockText = q.stock === 0 ? "sold out" : `${q.stock} in stock`;
+        return (
+          <span
+            key={q.quality}
+            className={q.stock === 0 ? "opacity-50" : undefined}
+            title={`${q.quality}: ${stockText}`}
+          >
+            <Badge tone={QUALITY_TONE[q.quality]}>
+              {compact ? (
+                <>
+                  <span className="sr-only">{q.quality}: </span>
+                  <span className="min-w-3 text-center font-semibold tabular-nums">{q.stock}</span>
+                </>
+              ) : (
+                <>
+                  {q.quality} · {q.stock}
+                </>
+              )}
+            </Badge>
+          </span>
+        );
+      })}
     </>
   );
 }

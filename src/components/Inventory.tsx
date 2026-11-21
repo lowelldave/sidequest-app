@@ -18,6 +18,9 @@ import {
   type StockStatus,
   type Toy,
 } from "@/lib/types";
+import { FilterPanel } from "./FilterPanel";
+import { ImportToys } from "./ImportToys";
+import { Pagination, usePagination } from "./Pagination";
 import { ToyCover } from "./images";
 import { ToyDetail } from "./ToyDetail";
 import { ToyForm } from "./ToyForm";
@@ -65,6 +68,7 @@ function InventoryView({ data }: { data: ShopData }) {
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   // The toy open in the details modal. Kept as an id so the modal always shows current data.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = data.toys.find((t) => t.id === selectedId);
@@ -86,6 +90,13 @@ function InventoryView({ data }: { data: ShopData }) {
           )),
     )
     .sort(SORTERS[sort]);
+
+  // Back to the first page whenever the filters or sorting change.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:inventory",
+    anchorId: "inventory-list",
+    resetKey: JSON.stringify([q, categories, qualities, stock, minPrice, maxPrice, sort]),
+  });
 
   const filtersActive =
     q !== "" ||
@@ -111,14 +122,25 @@ function InventoryView({ data }: { data: ShopData }) {
         subtitle="Every toy in the shop. Select one to see its pictures and details."
         action={
           can("inventory.create") && (
-            <Button variant="primary" onClick={() => setAdding(true)}>
-              + Add toy
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setImporting(true)}>Import</Button>
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                + Add toy
+              </Button>
+            </div>
           )
         }
       />
 
-      <div className="rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        storageKey="toyshop:filters-open:inventory"
+        onReset={resetFilters}
+        activeCount={
+          [q !== "", categories.length > 0, qualities.length > 0, stock !== "all", minPrice !== "" || maxPrice !== ""].filter(
+            Boolean,
+          ).length
+        }
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
           <Field label="Search" className="col-span-2">
             <input
@@ -206,7 +228,7 @@ function InventoryView({ data }: { data: ShopData }) {
             ))}
           </div>
         </div>
-      </div>
+      </FilterPanel>
 
       <div className="my-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted" aria-live="polite">
@@ -241,6 +263,7 @@ function InventoryView({ data }: { data: ShopData }) {
         </div>
       </div>
 
+      <div id="inventory-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         data.toys.length === 0 ? (
           <EmptyState title="No toys yet" hint="Add your first toy to start tracking stock." />
@@ -248,8 +271,10 @@ function InventoryView({ data }: { data: ShopData }) {
           <EmptyState title="No toys match these filters" hint="Try loosening or clearing the filters." />
         )
       ) : view === "gallery" ? (
-        <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((t) => (
+        // On a phone each card is small and shows only the name, stock and price; the
+        // manufacturer, category, SKU and quality badges appear from the "sm" size up.
+        <ul className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4">
+          {paging.pageItems.map((t) => (
             <li
               key={t.id}
               className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-shadow focus-within:ring-2 focus-within:ring-accent hover:shadow-md"
@@ -257,26 +282,26 @@ function InventoryView({ data }: { data: ShopData }) {
               <div className="aspect-[4/3] w-full overflow-hidden">
                 <ToyCover toy={t} />
               </div>
-              <div className="flex flex-1 flex-col p-3">
+              <div className="flex flex-1 flex-col gap-1 p-2.5 sm:gap-0 sm:p-3">
                 {/* The name is the button; its ::after stretches over the whole card. */}
                 <button
                   type="button"
                   onClick={() => setSelectedId(t.id)}
-                  className="text-left font-medium leading-snug after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                  className="line-clamp-2 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none sm:text-base"
                 >
                   {t.name}
                 </button>
-                <p className="mt-0.5 text-xs text-muted">{t.manufacturer || "No manufacturer"}</p>
-                <p className="text-xs text-muted">
+                <p className="mt-0.5 hidden text-xs text-muted sm:block">{t.manufacturer || "No manufacturer"}</p>
+                <p className="hidden text-xs text-muted sm:block">
                   {t.category} · {t.sku}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 hidden flex-wrap gap-1.5 sm:flex">
                   <QualityBadges toy={t} />
                 </div>
-                <div className="mt-1.5">
+                <div className="sm:mt-1.5">
                   <StockBadge toy={t} />
                 </div>
-                <p className="mt-auto pt-3 text-lg font-semibold whitespace-nowrap tabular-nums">
+                <p className="mt-auto pt-1 text-base font-semibold whitespace-nowrap tabular-nums sm:pt-3 sm:text-lg">
                   {priceText(...priceRange(t), currency)}
                 </p>
               </div>
@@ -284,7 +309,43 @@ function InventoryView({ data }: { data: ShopData }) {
           ))}
         </ul>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+        <>
+        {/* On a phone a row is short: the toy and its price, then its qualities as coloured badges with stock. */}
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:hidden">
+          {paging.pageItems.map((t) => (
+            <li
+              key={t.id}
+              className="relative flex items-start gap-3 p-3 transition-colors focus-within:bg-surface-2 active:bg-surface-2"
+            >
+              <span className="size-12 shrink-0 overflow-hidden rounded-lg border border-line">
+                <ToyCover toy={t} compact />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    {/* The name is the button; its ::after stretches over the whole row. */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(t.id)}
+                      className="line-clamp-2 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                    >
+                      {t.name}
+                    </button>
+                    {t.sku && <p className="mt-0.5 truncate text-xs text-muted">{t.sku}</p>}
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold whitespace-nowrap tabular-nums">
+                    {priceText(...priceRange(t), currency)}
+                  </p>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <QualityBadges toy={t} compact />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface sm:block">
           <table className="w-full min-w-[1000px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
@@ -299,7 +360,7 @@ function InventoryView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => (
+              {paging.pageItems.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setSelectedId(t.id)}
@@ -347,13 +408,18 @@ function InventoryView({ data }: { data: ShopData }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
+      </div>
+      <Pagination paging={paging} noun="toys" />
 
       {adding && (
         <Modal title="Add toy" onClose={() => setAdding(false)}>
           <ToyForm toy={null} onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
         </Modal>
       )}
+
+      {importing && <ImportToys toys={data.toys} currency={currency} onClose={() => setImporting(false)} />}
 
       {selected && (
         <ToyDetail

@@ -3,8 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRole, deleteRole, listPeople, listRoles, updateRole, type Role, type RoleInput } from "@/lib/admin";
 import { ACTION_LABEL, PERMISSION_GROUPS, type Action, type Permission } from "@/lib/permissions";
+import { confirmDialog } from "../confirm";
 import { toast } from "../toast";
-import { Badge, Button, Field, FormError, Modal, inputCls } from "../ui";
+import { Badge, Button, Field, FormError, Modal, ModalActions, inputCls } from "../ui";
 import { Section, SettingsStack } from "./parts";
 
 const ACTIONS: Action[] = ["view", "create", "edit", "delete"];
@@ -33,11 +34,16 @@ export function RolesSettings() {
 
   async function remove(role: Role) {
     const n = members.get(role.id) ?? 0;
-    const warning =
-      n > 0
-        ? `\n\n${n} ${n === 1 ? "person has" : "people have"} this role and will lose access until you give them another one.`
-        : "";
-    if (!confirm(`Delete the role "${role.name}"?${warning}`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete the role "${role.name}"?`,
+      message:
+        n > 0
+          ? `${n} ${n === 1 ? "person has" : "people have"} this role and will lose access until you give them another one.`
+          : "No one has this role.",
+      confirmLabel: "Delete role",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     try {
       await deleteRole(role.id);
       toast({ tone: "success", title: "Role deleted", message: role.name });
@@ -195,7 +201,32 @@ function RoleForm({ role, onClose, onSaved }: { role: Role | null; onClose: () =
           </Field>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-line">
+        {/* On a phone each page is a small card of tick boxes; the table below is for wider screens. */}
+        <div className="space-y-2 sm:hidden">
+          {PERMISSION_GROUPS.map((group) => (
+            <fieldset key={group.page} className="rounded-xl border border-line p-3">
+              <legend className="px-1 text-sm font-medium">{group.page}</legend>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                {ACTIONS.map((action) => {
+                  const entry = group.actions[action];
+                  if (!entry) return null;
+                  return (
+                    <label key={action} className="flex min-h-10 cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="size-5 accent-[var(--accent)]"
+                        checked={permissions.has(entry.permission)}
+                        onChange={() => toggle(group, action)}
+                      />
+                      {ACTION_LABEL[action]}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto rounded-xl border border-line sm:block">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
@@ -244,12 +275,12 @@ function RoleForm({ role, onClose, onSaved }: { role: Role | null; onClose: () =
         </p>
 
         <FormError message={error} />
-        <div className="flex justify-end gap-2">
+        <ModalActions>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit" disabled={busy}>
             {busy ? "Saving…" : role ? "Save role" : "Create role"}
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
   );
