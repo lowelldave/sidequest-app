@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { Branding } from "@/components/Branding";
 import { ConfirmHost } from "@/components/confirm";
 import { SyncErrorBanner } from "@/components/status";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { ThemeSync } from "@/components/ThemeSync";
 import { Toaster } from "@/components/toast";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
@@ -46,7 +46,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full md:flex">
         <Branding />
         <AppShell>{children}</AppShell>
-        <ThemeToggle />
+        <ThemeSync />
         <Toaster />
         <ConfirmHost />
         <SyncErrorBanner />
