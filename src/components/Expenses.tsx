@@ -22,6 +22,7 @@ import {
   StatCard,
   inputCls,
 } from "./ui";
+import { Pagination, usePagination } from "./Pagination";
 import { ShopLoading } from "./status";
 
 export function Expenses() {
@@ -49,6 +50,13 @@ function ExpensesView({ data }: { data: ShopData }) {
         (!to || e.date <= to),
     )
     .sort((a, b) => b.date.localeCompare(a.date));
+
+  // Back to the first page whenever the filters change. The totals above still count every match.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:expenses",
+    anchorId: "expenses-list",
+    resetKey: JSON.stringify([q, categories, from, to]),
+  });
 
   const total = filtered.reduce((a, e) => a + e.amount, 0);
   const thisMonth = todayISO().slice(0, 7);
@@ -155,6 +163,7 @@ function ExpensesView({ data }: { data: ShopData }) {
         )}
       </p>
 
+      <div id="expenses-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         data.expenses.length === 0 ? (
           <EmptyState title="No expenses yet" hint="Add rent, utilities or any other cost of running the shop." />
@@ -175,7 +184,7 @@ function ExpensesView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {paging.pageItems.map((e) => (
                 <tr key={e.id} className="border-b border-line last:border-0">
                   <td className="px-4 py-3 whitespace-nowrap">{formatDate(e.date)}</td>
                   <td className="px-4 py-3">
@@ -204,6 +213,8 @@ function ExpensesView({ data }: { data: ShopData }) {
           </table>
         </div>
       )}
+      </div>
+      <Pagination paging={paging} noun="expenses" />
 
       {editing && (
         <ExpenseForm expense={editing === "new" ? null : editing} onClose={() => setEditing(null)} />

@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { formatDate, money } from "@/lib/format";
 import { downloadInvoice, invoiceNumber } from "@/lib/invoice";
 import { deleteTransaction, useShop } from "@/lib/store";
+import { Pagination, usePagination } from "./Pagination";
 import { TransactionForm } from "./TransactionForm";
 import { toast } from "./toast";
 import {
@@ -88,6 +89,14 @@ function TransactionsView({ data }: { data: ShopData }) {
     })
     .sort((a, b) => b[0].date.localeCompare(a[0].date));
   const shownTransactions = filtered.flat();
+
+  // Pages are made of whole transactions (a multi-toy sale is one row), and go back
+  // to 1 when the filters change. The totals above still count every match.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:transactions",
+    anchorId: "transactions-list",
+    resetKey: JSON.stringify([q, types, payment, from, to]),
+  });
 
   const total = (type: TransactionType) =>
     shownTransactions.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
@@ -241,6 +250,7 @@ function TransactionsView({ data }: { data: ShopData }) {
         )}
       </p>
 
+      <div id="transactions-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         groups.length === 0 ? (
           <EmptyState
@@ -265,7 +275,7 @@ function TransactionsView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((group) => {
+              {paging.pageItems.map((group) => {
                 const t = group[0];
                 const units = group.reduce((a, x) => a + x.quantity, 0);
                 const amount = group.reduce((a, x) => a + x.amount, 0);
@@ -326,6 +336,8 @@ function TransactionsView({ data }: { data: ShopData }) {
           </table>
         </div>
       )}
+      </div>
+      <Pagination paging={paging} noun="transactions" />
 
       {adding && (
         <TransactionForm toys={data.toys} currency={currency} onClose={() => setAdding(false)} />
