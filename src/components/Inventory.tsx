@@ -18,6 +18,7 @@ import {
   type StockStatus,
   type Toy,
 } from "@/lib/types";
+import { FilterPanel } from "./FilterPanel";
 import { ImportToys } from "./ImportToys";
 import { Pagination, usePagination } from "./Pagination";
 import { ToyCover } from "./images";
@@ -131,7 +132,14 @@ function InventoryView({ data }: { data: ShopData }) {
         }
       />
 
-      <div className="rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        storageKey="toyshop:filters-open:inventory"
+        activeCount={
+          [q !== "", categories.length > 0, qualities.length > 0, stock !== "all", minPrice !== "" || maxPrice !== ""].filter(
+            Boolean,
+          ).length
+        }
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
           <Field label="Search" className="col-span-2">
             <input
@@ -219,7 +227,7 @@ function InventoryView({ data }: { data: ShopData }) {
             ))}
           </div>
         </div>
-      </div>
+      </FilterPanel>
 
       <div className="my-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted" aria-live="polite">

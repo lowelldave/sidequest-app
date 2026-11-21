@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { formatDate, money } from "@/lib/format";
 import { downloadInvoice, invoiceNumber } from "@/lib/invoice";
 import { deleteTransaction, useShop } from "@/lib/store";
+import { FilterPanel } from "./FilterPanel";
 import { Pagination, usePagination } from "./Pagination";
 import { TransactionForm } from "./TransactionForm";
 import { toast } from "./toast";
@@ -182,7 +183,13 @@ function TransactionsView({ data }: { data: ShopData }) {
         <StatCard label="Net cash flow" value={money(net, currency)} hint="For the rows shown below" />
       </div>
 
-      <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        className="mt-4"
+        storageKey="toyshop:filters-open:transactions"
+        activeCount={
+          [q !== "", types.length > 0, payment !== "all", !!from || !!to].filter(Boolean).length
+        }
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Field label="Search" className="col-span-2">
             <input
@@ -226,7 +233,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             </Chip>
           ))}
         </div>
-      </div>
+      </FilterPanel>
 
       <p className="my-4 text-sm text-muted" aria-live="polite">
         Showing {filtered.length} of {groups.length} transactions

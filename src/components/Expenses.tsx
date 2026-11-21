@@ -22,6 +22,7 @@ import {
   StatCard,
   inputCls,
 } from "./ui";
+import { FilterPanel } from "./FilterPanel";
 import { Pagination, usePagination } from "./Pagination";
 import { ShopLoading } from "./status";
 
@@ -104,7 +105,11 @@ function ExpensesView({ data }: { data: ShopData }) {
         />
       </div>
 
-      <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        className="mt-4"
+        storageKey="toyshop:filters-open:expenses"
+        activeCount={[q !== "", categories.length > 0, !!from || !!to].filter(Boolean).length}
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="Search" className="col-span-2">
             <input
@@ -140,7 +145,7 @@ function ExpensesView({ data }: { data: ShopData }) {
             ))}
           </div>
         </div>
-      </div>
+      </FilterPanel>
 
       <p className="my-4 text-sm text-muted" aria-live="polite">
         Showing {filtered.length} of {data.expenses.length} expenses
