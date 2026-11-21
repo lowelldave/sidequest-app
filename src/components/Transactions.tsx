@@ -99,6 +99,14 @@ function TransactionsView({ data }: { data: ShopData }) {
     resetKey: JSON.stringify([q, types, payment, from, to]),
   });
 
+  function resetFilters() {
+    setQuery("");
+    setTypes([]);
+    setPayment("all");
+    setFrom("");
+    setTo("");
+  }
+
   const total = (type: TransactionType) =>
     shownTransactions.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
   const net = shownTransactions.reduce((a, t) => a + signedAmount(t), 0);
@@ -186,6 +194,7 @@ function TransactionsView({ data }: { data: ShopData }) {
       <FilterPanel
         className="mt-4"
         storageKey="toyshop:filters-open:transactions"
+        onReset={resetFilters}
         activeCount={
           [q !== "", types.length > 0, payment !== "all", !!from || !!to].filter(Boolean).length
         }
@@ -243,13 +252,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             <button
               type="button"
               className="font-medium text-accent hover:underline"
-              onClick={() => {
-                setQuery("");
-                setTypes([]);
-                setPayment("all");
-                setFrom("");
-                setTo("");
-              }}
+              onClick={resetFilters}
             >
               Clear filters
             </button>

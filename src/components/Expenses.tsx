@@ -59,6 +59,13 @@ function ExpensesView({ data }: { data: ShopData }) {
     resetKey: JSON.stringify([q, categories, from, to]),
   });
 
+  function resetFilters() {
+    setQuery("");
+    setCategories([]);
+    setFrom("");
+    setTo("");
+  }
+
   const total = filtered.reduce((a, e) => a + e.amount, 0);
   const thisMonth = todayISO().slice(0, 7);
   const monthTotal = data.expenses
@@ -108,6 +115,7 @@ function ExpensesView({ data }: { data: ShopData }) {
       <FilterPanel
         className="mt-4"
         storageKey="toyshop:filters-open:expenses"
+        onReset={resetFilters}
         activeCount={[q !== "", categories.length > 0, !!from || !!to].filter(Boolean).length}
       >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -155,12 +163,7 @@ function ExpensesView({ data }: { data: ShopData }) {
             <button
               type="button"
               className="font-medium text-accent hover:underline"
-              onClick={() => {
-                setQuery("");
-                setCategories([]);
-                setFrom("");
-                setTo("");
-              }}
+              onClick={resetFilters}
             >
               Clear filters
             </button>

@@ -134,6 +134,7 @@ function InventoryView({ data }: { data: ShopData }) {
 
       <FilterPanel
         storageKey="toyshop:filters-open:inventory"
+        onReset={resetFilters}
         activeCount={
           [q !== "", categories.length > 0, qualities.length > 0, stock !== "all", minPrice !== "" || maxPrice !== ""].filter(
             Boolean,
