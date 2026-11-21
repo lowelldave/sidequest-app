@@ -15,6 +15,7 @@ import {
   type ShopSettingsInput,
 } from "@/lib/shop";
 import { CURRENCIES, QUALITIES, type Currency, type Quality } from "@/lib/types";
+import { ThemeMode } from "../ThemeMode";
 import { toast } from "../toast";
 import { Button, Field, FormError, inputCls } from "../ui";
 import { Section, SettingsStack } from "./parts";
@@ -144,7 +145,16 @@ function ShopSetupForm({ shop }: { shop: ShopSettings }) {
           </div>
         </Section>
 
-        <Section title="Colour scheme" description="The colour of buttons, links and highlights. Dark mode uses a lighter shade.">
+        <Section title="Colour scheme" description="Light or dark, and the colour of buttons, links and highlights.">
+          <div className="mb-5">
+            <p className="mb-1.5 text-xs font-medium text-muted">Light or dark</p>
+            <ThemeMode />
+            <p className="mt-1.5 text-xs text-muted">
+              Your own choice, applied right away and saved to your account. Everyone picks theirs in Profile →
+              Preferences.
+            </p>
+          </div>
+          <p className="mb-1.5 text-xs font-medium text-muted">Shop colour (dark mode uses a lighter shade)</p>
           <div className="flex flex-wrap gap-2">
             {ACCENT_PRESETS.map((p) => {
               const active = p.value.toLowerCase() === form.accent.toLowerCase();
