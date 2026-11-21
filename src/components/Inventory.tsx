@@ -19,6 +19,7 @@ import {
   type Toy,
 } from "@/lib/types";
 import { ImportToys } from "./ImportToys";
+import { Pagination, usePagination } from "./Pagination";
 import { ToyCover } from "./images";
 import { ToyDetail } from "./ToyDetail";
 import { ToyForm } from "./ToyForm";
@@ -88,6 +89,13 @@ function InventoryView({ data }: { data: ShopData }) {
           )),
     )
     .sort(SORTERS[sort]);
+
+  // Back to the first page whenever the filters or sorting change.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:inventory",
+    anchorId: "inventory-list",
+    resetKey: JSON.stringify([q, categories, qualities, stock, minPrice, maxPrice, sort]),
+  });
 
   const filtersActive =
     q !== "" ||
@@ -246,6 +254,7 @@ function InventoryView({ data }: { data: ShopData }) {
         </div>
       </div>
 
+      <div id="inventory-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         data.toys.length === 0 ? (
           <EmptyState title="No toys yet" hint="Add your first toy to start tracking stock." />
@@ -254,7 +263,7 @@ function InventoryView({ data }: { data: ShopData }) {
         )
       ) : view === "gallery" ? (
         <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
-          {filtered.map((t) => (
+          {paging.pageItems.map((t) => (
             <li
               key={t.id}
               className="group relative flex flex-col overflow-hidden rounded-xl border border-line bg-surface transition-shadow focus-within:ring-2 focus-within:ring-accent hover:shadow-md"
@@ -304,7 +313,7 @@ function InventoryView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((t) => (
+              {paging.pageItems.map((t) => (
                 <tr
                   key={t.id}
                   onClick={() => setSelectedId(t.id)}
@@ -353,6 +362,8 @@ function InventoryView({ data }: { data: ShopData }) {
           </table>
         </div>
       )}
+      </div>
+      <Pagination paging={paging} noun="toys" />
 
       {adding && (
         <Modal title="Add toy" onClose={() => setAdding(false)}>
