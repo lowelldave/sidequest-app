@@ -309,7 +309,40 @@ function InventoryView({ data }: { data: ShopData }) {
           ))}
         </ul>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+        <>
+        {/* On a phone a row is short: the toy and its price, then its qualities as coloured badges with stock. */}
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:hidden">
+          {paging.pageItems.map((t) => (
+            <li
+              key={t.id}
+              className="relative flex items-start gap-3 p-3 transition-colors focus-within:bg-surface-2 active:bg-surface-2"
+            >
+              <span className="size-12 shrink-0 overflow-hidden rounded-lg border border-line">
+                <ToyCover toy={t} compact />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  {/* The name is the button; its ::after stretches over the whole row. */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(t.id)}
+                    className="line-clamp-2 min-w-0 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                  >
+                    {t.name}
+                  </button>
+                  <p className="shrink-0 text-sm font-semibold whitespace-nowrap tabular-nums">
+                    {priceText(...priceRange(t), currency)}
+                  </p>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  <QualityBadges toy={t} compact />
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="hidden overflow-x-auto rounded-xl border border-line bg-surface sm:block">
           <table className="w-full min-w-[1000px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
@@ -372,6 +405,7 @@ function InventoryView({ data }: { data: ShopData }) {
             </tbody>
           </table>
         </div>
+        </>
       )}
       </div>
       <Pagination paging={paging} noun="toys" />
