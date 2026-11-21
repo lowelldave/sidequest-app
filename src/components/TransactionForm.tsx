@@ -19,7 +19,7 @@ import {
 import { QuickAddToy } from "./QuickAddToy";
 import { ToyPicker } from "./ToyPicker";
 import { toast } from "./toast";
-import { Button, Chip, Field, FormError, Modal, inputCls } from "./ui";
+import { Button, Chip, Field, FormError, Modal, ModalActions, inputCls } from "./ui";
 
 /** One toy in the form: a single one for sales and refunds, as many as needed for a restock. */
 type Line = {
@@ -219,7 +219,7 @@ export function TransactionForm({
     <>
     <Modal title="New transaction" onClose={onClose}>
       <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 flex gap-2">
+        <div className="col-span-2 grid grid-cols-3 gap-2 sm:flex">
           {TRANSACTION_TYPES.map((t) => (
             <Chip key={t} active={type === t} onClick={() => chooseType(t)}>
               {TRANSACTION_LABEL[t]}
@@ -353,12 +353,12 @@ export function TransactionForm({
         <div className="col-span-2">
           <FormError message={error} />
         </div>
-        <div className="col-span-2 flex justify-end gap-2">
+        <ModalActions className="col-span-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit">
             Record {type}
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
     {adding && addingLine && (
@@ -511,8 +511,8 @@ function ItemLine({
         onAddNew={onAddNew}
         autoFocus
       />
-      <div className="grid grid-cols-3 gap-2">
-        <Field label="Quality">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <Field label="Quality" className="col-span-2 sm:col-span-1">
           <select
             className={inputCls}
             value={toy ? line.quality : ""}

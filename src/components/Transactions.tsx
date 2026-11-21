@@ -5,6 +5,9 @@ import { useState, type ReactNode } from "react";
 import { formatDate, money } from "@/lib/format";
 import { downloadInvoice, invoiceNumber } from "@/lib/invoice";
 import { deleteTransaction, useShop } from "@/lib/store";
+import { confirmDialog } from "./confirm";
+import { FilterPanel } from "./FilterPanel";
+import { Pagination, usePagination } from "./Pagination";
 import { TransactionForm } from "./TransactionForm";
 import { toast } from "./toast";
 import {
@@ -24,6 +27,7 @@ import {
   EmptyState,
   Field,
   Modal,
+  ModalActions,
   PageHeader,
   QUALITY_TONE,
   StatCard,
@@ -89,6 +93,22 @@ function TransactionsView({ data }: { data: ShopData }) {
     .sort((a, b) => b[0].date.localeCompare(a[0].date));
   const shownTransactions = filtered.flat();
 
+  // Pages are made of whole transactions (a multi-toy sale is one row), and go back
+  // to 1 when the filters change. The totals above still count every match.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:transactions",
+    anchorId: "transactions-list",
+    resetKey: JSON.stringify([q, types, payment, from, to]),
+  });
+
+  function resetFilters() {
+    setQuery("");
+    setTypes([]);
+    setPayment("all");
+    setFrom("");
+    setTo("");
+  }
+
   const total = (type: TransactionType) =>
     shownTransactions.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
   const net = shownTransactions.reduce((a, t) => a + signedAmount(t), 0);
@@ -113,43 +133,45 @@ function TransactionsView({ data }: { data: ShopData }) {
     }
   }
 
-  function remove(t: Transaction) {
-    if (
-      confirm(
-        `Delete this ${t.type} of ${t.quantity} × ${t.toyName} (${t.quality})? Stock will be adjusted back.`,
-      )
-    ) {
-      // Keep the details open on what's left of the same sale or delivery, if anything.
-      if (viewingId === t.id) {
-        const rest = groupOf(t).filter((x) => x.id !== t.id);
-        setViewingId(rest[0]?.id ?? null);
-      }
-      deleteTransaction(t.id);
-      toast({
-        tone: "success",
-        title: "Transaction deleted",
-        message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock adjusted back.`,
-      });
+  async function remove(t: Transaction) {
+    const confirmed = await confirmDialog({
+      title: `Delete this ${t.type}?`,
+      message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock will be adjusted back.`,
+      confirmLabel: "Delete transaction",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    // Keep the details open on what's left of the same sale or delivery, if anything.
+    if (viewingId === t.id) {
+      const rest = groupOf(t).filter((x) => x.id !== t.id);
+      setViewingId(rest[0]?.id ?? null);
     }
+    deleteTransaction(t.id);
+    toast({
+      tone: "success",
+      title: "Transaction deleted",
+      message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock adjusted back.`,
+    });
   }
 
   /** Deletes a whole row: every toy of the sale or delivery. */
-  function removeGroup(group: Transaction[]) {
+  async function removeGroup(group: Transaction[]) {
     if (group.length === 1) return remove(group[0]);
     const t = group[0];
-    if (
-      confirm(
-        `Delete this ${t.type} of ${group.length} toys (${invoiceNumber(t)})? Stock will be adjusted back for all of them.`,
-      )
-    ) {
-      if (viewingId && group.some((x) => x.id === viewingId)) setViewingId(null);
-      for (const x of group) deleteTransaction(x.id);
-      toast({
-        tone: "success",
-        title: "Transaction deleted",
-        message: `${invoiceNumber(t)}: ${group.length} toys. Stock adjusted back.`,
-      });
-    }
+    const confirmed = await confirmDialog({
+      title: `Delete this ${t.type}?`,
+      message: `${invoiceNumber(t)}: ${group.length} toys. Stock will be adjusted back for all of them.`,
+      confirmLabel: "Delete transaction",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    if (viewingId && group.some((x) => x.id === viewingId)) setViewingId(null);
+    for (const x of group) deleteTransaction(x.id);
+    toast({
+      tone: "success",
+      title: "Transaction deleted",
+      message: `${invoiceNumber(t)}: ${group.length} toys. Stock adjusted back.`,
+    });
   }
 
   return (
@@ -173,7 +195,14 @@ function TransactionsView({ data }: { data: ShopData }) {
         <StatCard label="Net cash flow" value={money(net, currency)} hint="For the rows shown below" />
       </div>
 
-      <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        className="mt-4"
+        storageKey="toyshop:filters-open:transactions"
+        onReset={resetFilters}
+        activeCount={
+          [q !== "", types.length > 0, payment !== "all", !!from || !!to].filter(Boolean).length
+        }
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           <Field label="Search" className="col-span-2">
             <input
@@ -217,7 +246,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             </Chip>
           ))}
         </div>
-      </div>
+      </FilterPanel>
 
       <p className="my-4 text-sm text-muted" aria-live="polite">
         Showing {filtered.length} of {groups.length} transactions
@@ -227,13 +256,7 @@ function TransactionsView({ data }: { data: ShopData }) {
             <button
               type="button"
               className="font-medium text-accent hover:underline"
-              onClick={() => {
-                setQuery("");
-                setTypes([]);
-                setPayment("all");
-                setFrom("");
-                setTo("");
-              }}
+              onClick={resetFilters}
             >
               Clear filters
             </button>
@@ -241,6 +264,7 @@ function TransactionsView({ data }: { data: ShopData }) {
         )}
       </p>
 
+      <div id="transactions-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         groups.length === 0 ? (
           <EmptyState
@@ -265,7 +289,7 @@ function TransactionsView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((group) => {
+              {paging.pageItems.map((group) => {
                 const t = group[0];
                 const units = group.reduce((a, x) => a + x.quantity, 0);
                 const amount = group.reduce((a, x) => a + x.amount, 0);
@@ -326,6 +350,8 @@ function TransactionsView({ data }: { data: ShopData }) {
           </table>
         </div>
       )}
+      </div>
+      <Pagination paging={paging} noun="transactions" />
 
       {adding && (
         <TransactionForm toys={data.toys} currency={currency} onClose={() => setAdding(false)} />
@@ -406,7 +432,62 @@ function TransactionDetails({
           )}
         </dl>
 
-        <div className="overflow-x-auto rounded-lg border border-line">
+        {/* On a phone: one small card per toy, then the totals. The table is for wider screens. */}
+        <div className="sm:hidden">
+          <ul className="space-y-2">
+            {group.map((t) => (
+              <li
+                key={t.id}
+                aria-current={several && t.id === selected.id ? "true" : undefined}
+                className={`rounded-lg border border-line p-3 ${several && t.id === selected.id ? "bg-surface-2" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{t.toyName}</p>
+                    <div className="mt-1">
+                      <Badge tone={QUALITY_TONE[t.quality]}>{t.quality}</Badge>
+                    </div>
+                  </div>
+                  <p className="shrink-0 font-semibold tabular-nums">{money(t.amount, currency)}</p>
+                </div>
+                <p className="mt-2 text-xs text-muted tabular-nums">
+                  {t.quantity} × {money(t.unitPrice, currency)}
+                  {(t.delivery ?? 0) > 0 && <> + {money(t.delivery ?? 0, currency)} delivery</>}
+                </p>
+                {canDelete && several && (
+                  <Button
+                    variant="danger"
+                    className="mt-2 h-9 w-full"
+                    onClick={() => onDelete(t)}
+                    aria-label={`Delete ${t.toyName} (${t.quality}) from this ${t.type}`}
+                  >
+                    Delete this toy
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+          <dl className="mt-3 space-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm">
+            {hasDelivery && (
+              <>
+                <div className="flex justify-between text-muted">
+                  <dt>Items</dt>
+                  <dd className="tabular-nums">{money(total - delivery, currency)}</dd>
+                </div>
+                <div className="flex justify-between text-muted">
+                  <dt>Delivery</dt>
+                  <dd className="tabular-nums">{money(delivery, currency)}</dd>
+                </div>
+              </>
+            )}
+            <div className="flex justify-between font-semibold">
+              <dt>Total</dt>
+              <dd className="tabular-nums">{money(total, currency)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-lg border border-line sm:block">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs text-muted">
@@ -477,21 +558,21 @@ function TransactionDetails({
           </table>
         </div>
 
-        <div className="flex flex-wrap justify-between gap-2">
-          <div>
-            {canDelete && !several && (
+        <ModalActions
+          className="mt-0!"
+          start={
+            canDelete && !several ? (
               <Button variant="danger" onClick={() => onDelete(selected)}>
                 Delete transaction
               </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={onClose}>Close</Button>
-            <Button variant="primary" onClick={onInvoice}>
-              Download invoice
-            </Button>
-          </div>
-        </div>
+            ) : undefined
+          }
+        >
+          <Button onClick={onClose}>Close</Button>
+          <Button variant="primary" onClick={onInvoice}>
+            Download invoice
+          </Button>
+        </ModalActions>
       </div>
     </Modal>
   );

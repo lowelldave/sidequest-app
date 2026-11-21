@@ -387,6 +387,26 @@ export function deleteToy(id: string) {
   );
 }
 
+/**
+ * Adds and updates many toys at once (see lib/toyImport.ts). The database saves all of
+ * them or none, then the inventory is reloaded so it shows exactly what was saved.
+ */
+export async function importToys(
+  items: unknown[],
+): Promise<{ error: string } | { created: number; updated: number }> {
+  if (!data) return { error: "The shop's data hasn't loaded yet." };
+  await queue; // Let any earlier changes finish saving first.
+  try {
+    const { data: result, error } = await getSupabase().rpc("import_toys", { p_toys: items });
+    if (error) return { error: errorText(error.message) };
+    await load();
+    const counts = result as { created?: number; updated?: number } | null;
+    return { created: counts?.created ?? 0, updated: counts?.updated ?? 0 };
+  } catch (e) {
+    return { error: errorText(e) };
+  }
+}
+
 // ---------- Transactions ----------
 
 export type TransactionInput = Omit<Transaction, "id" | "toyName" | "amount" | "recordedBy">;

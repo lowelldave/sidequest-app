@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { MIN_PASSWORD_LENGTH, changeEmail, setPassword, signOut, useAccount } from "@/lib/account";
 import { getSupabase } from "@/lib/supabase/client";
+import { confirmDialog } from "../confirm";
 import { toast } from "../toast";
 import { Button, Field, FormError, inputCls, PasswordInput } from "../ui";
 import { Section, SettingsStack } from "./parts";
@@ -178,11 +179,20 @@ function SessionsSection() {
   }, []);
 
   async function end(scope: "others" | "global") {
-    const message =
+    const confirmed = await confirmDialog(
       scope === "others"
-        ? "Sign out on every other phone, tablet and computer? This one stays signed in."
-        : "Sign out everywhere, including here?";
-    if (!confirm(message)) return;
+        ? {
+            title: "Sign out on your other devices?",
+            message: "Every other phone, tablet and computer is signed out. This one stays signed in.",
+            confirmLabel: "Sign out other devices",
+          }
+        : {
+            title: "Sign out everywhere?",
+            message: "Every device is signed out, including this one.",
+            confirmLabel: "Sign out everywhere",
+          },
+    );
+    if (!confirmed) return;
     setBusy(scope);
     const problem = await signOut(scope);
     setBusy(null);

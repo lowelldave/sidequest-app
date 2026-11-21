@@ -5,10 +5,11 @@ import { useState } from "react";
 import { formatDate, money } from "@/lib/format";
 import { deleteToy } from "@/lib/store";
 import { CATEGORY_EMOJI, costValue, retailValue, totalStock, type Toy } from "@/lib/types";
+import { confirmDialog } from "./confirm";
 import { ImageCarousel } from "./images";
 import { StockBadge } from "./toy-parts";
 import { ToyForm } from "./ToyForm";
-import { Badge, Button, Modal, QUALITY_TONE } from "./ui";
+import { Badge, Button, Modal, ModalActions, QUALITY_TONE } from "./ui";
 
 /**
  * Everything about one toy in a modal: its pictures as a carousel, its details,
@@ -26,11 +27,16 @@ export function ToyDetail({
   const [editing, setEditing] = useState(false);
   const can = useCan();
 
-  function remove() {
-    if (confirm(`Delete "${toy.name}" from inventory? Past transactions are kept.`)) {
-      deleteToy(toy.id);
-      onClose();
-    }
+  async function remove() {
+    const confirmed = await confirmDialog({
+      title: `Delete "${toy.name}"?`,
+      message: "It will be removed from the inventory, with its pictures. Past transactions are kept.",
+      confirmLabel: "Delete toy",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    deleteToy(toy.id);
+    onClose();
   }
 
   return (
@@ -114,20 +120,22 @@ export function ToyDetail({
           </div>
 
           {(can("inventory.delete") || can("inventory.edit")) && (
-            <div className="mt-5 flex items-center justify-between gap-2 border-t border-line pt-4">
-              {can("inventory.delete") ? (
-                <Button variant="danger" onClick={remove}>
-                  Delete
-                </Button>
-              ) : (
-                <span />
-              )}
+            <ModalActions
+              className="border-t border-line pt-4"
+              start={
+                can("inventory.delete") ? (
+                  <Button variant="danger" onClick={remove}>
+                    Delete
+                  </Button>
+                ) : undefined
+              }
+            >
               {can("inventory.edit") && (
                 <Button variant="primary" onClick={() => setEditing(true)}>
                   Edit
                 </Button>
               )}
-            </div>
+            </ModalActions>
           )}
         </>
       )}

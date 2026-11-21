@@ -13,7 +13,7 @@ import {
   type Toy,
 } from "@/lib/types";
 import { ImageField } from "./images";
-import { Button, Field, FormError, inputCls } from "./ui";
+import { Button, Field, FormError, ModalActions, inputCls } from "./ui";
 
 type QualityRow = { quality: Quality; price: string; cost: string; stock: string };
 
@@ -179,7 +179,7 @@ export function ToyForm({
                 Remove
               </Button>
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Field label="Selling price">
                 <input
                   type="number"
@@ -204,7 +204,7 @@ export function ToyForm({
                   required
                 />
               </Field>
-              <Field label="Stock">
+              <Field label="Stock" className="col-span-2 sm:col-span-1">
                 <input
                   type="number"
                   min="0"
@@ -247,12 +247,12 @@ export function ToyForm({
       <div className="col-span-2">
         <FormError message={error} />
       </div>
-      <div className="col-span-2 flex justify-end gap-2">
+      <ModalActions className="col-span-2">
         <Button onClick={onCancel}>Cancel</Button>
         <Button variant="primary" type="submit">
           {toy ? "Save changes" : "Add toy"}
         </Button>
-      </div>
+      </ModalActions>
     </form>
   );
 }

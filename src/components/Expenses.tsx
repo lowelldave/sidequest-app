@@ -18,10 +18,14 @@ import {
   Field,
   FormError,
   Modal,
+  ModalActions,
   PageHeader,
   StatCard,
   inputCls,
 } from "./ui";
+import { confirmDialog } from "./confirm";
+import { FilterPanel } from "./FilterPanel";
+import { Pagination, usePagination } from "./Pagination";
 import { ShopLoading } from "./status";
 
 export function Expenses() {
@@ -50,6 +54,20 @@ function ExpensesView({ data }: { data: ShopData }) {
     )
     .sort((a, b) => b.date.localeCompare(a.date));
 
+  // Back to the first page whenever the filters change. The totals above still count every match.
+  const paging = usePagination(filtered, {
+    storageKey: "toyshop:page-size:expenses",
+    anchorId: "expenses-list",
+    resetKey: JSON.stringify([q, categories, from, to]),
+  });
+
+  function resetFilters() {
+    setQuery("");
+    setCategories([]);
+    setFrom("");
+    setTo("");
+  }
+
   const total = filtered.reduce((a, e) => a + e.amount, 0);
   const thisMonth = todayISO().slice(0, 7);
   const monthTotal = data.expenses
@@ -61,10 +79,15 @@ function ExpensesView({ data }: { data: ShopData }) {
   );
   const filtersActive = q !== "" || categories.length > 0 || !!from || !!to;
 
-  function remove(e: Expense) {
-    if (confirm(`Delete the ${money(e.amount, currency)} expense for "${e.description || e.vendor}"?`)) {
-      deleteExpense(e.id);
-    }
+  async function remove(e: Expense) {
+    const what = e.description || e.vendor;
+    const confirmed = await confirmDialog({
+      title: "Delete this expense?",
+      message: `${money(e.amount, currency)}${what ? ` for "${what}"` : ""}.`,
+      confirmLabel: "Delete expense",
+      tone: "danger",
+    });
+    if (confirmed) deleteExpense(e.id);
   }
 
   return (
@@ -96,7 +119,12 @@ function ExpensesView({ data }: { data: ShopData }) {
         />
       </div>
 
-      <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+      <FilterPanel
+        className="mt-4"
+        storageKey="toyshop:filters-open:expenses"
+        onReset={resetFilters}
+        activeCount={[q !== "", categories.length > 0, !!from || !!to].filter(Boolean).length}
+      >
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Field label="Search" className="col-span-2">
             <input
@@ -132,7 +160,7 @@ function ExpensesView({ data }: { data: ShopData }) {
             ))}
           </div>
         </div>
-      </div>
+      </FilterPanel>
 
       <p className="my-4 text-sm text-muted" aria-live="polite">
         Showing {filtered.length} of {data.expenses.length} expenses
@@ -142,12 +170,7 @@ function ExpensesView({ data }: { data: ShopData }) {
             <button
               type="button"
               className="font-medium text-accent hover:underline"
-              onClick={() => {
-                setQuery("");
-                setCategories([]);
-                setFrom("");
-                setTo("");
-              }}
+              onClick={resetFilters}
             >
               Clear filters
             </button>
@@ -155,6 +178,7 @@ function ExpensesView({ data }: { data: ShopData }) {
         )}
       </p>
 
+      <div id="expenses-list" className="scroll-mt-4">
       {filtered.length === 0 ? (
         data.expenses.length === 0 ? (
           <EmptyState title="No expenses yet" hint="Add rent, utilities or any other cost of running the shop." />
@@ -175,7 +199,7 @@ function ExpensesView({ data }: { data: ShopData }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
+              {paging.pageItems.map((e) => (
                 <tr key={e.id} className="border-b border-line last:border-0">
                   <td className="px-4 py-3 whitespace-nowrap">{formatDate(e.date)}</td>
                   <td className="px-4 py-3">
@@ -204,6 +228,8 @@ function ExpensesView({ data }: { data: ShopData }) {
           </table>
         </div>
       )}
+      </div>
+      <Pagination paging={paging} noun="expenses" />
 
       {editing && (
         <ExpenseForm expense={editing === "new" ? null : editing} onClose={() => setEditing(null)} />
@@ -273,12 +299,12 @@ function ExpenseForm({ expense, onClose }: { expense: Expense | null; onClose: (
         <div className="col-span-2">
           <FormError message={error} />
         </div>
-        <div className="col-span-2 flex justify-end gap-2">
+        <ModalActions className="col-span-2">
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" type="submit">
             {expense ? "Save changes" : "Add expense"}
           </Button>
-        </div>
+        </ModalActions>
       </form>
     </Modal>
   );

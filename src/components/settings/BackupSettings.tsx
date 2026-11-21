@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { getShopSettings } from "@/lib/shop";
 import { clearAllData, exportRows, loadSampleData, replaceAllData, type DataRows } from "@/lib/store";
+import { confirmDialog } from "../confirm";
 import { toast } from "../toast";
 import { Button } from "../ui";
 import { Section, SettingsStack } from "./parts";
@@ -76,14 +77,15 @@ export function BackupSettings() {
       return;
     }
     const taken = new Date(backup.exported_at).toLocaleString();
-    if (
-      !confirm(
-        `Replace everything in the shop with this backup from ${taken}?\n\nIt has ${counts(backup)}. ` +
-          "Everything recorded since will be lost. Download a backup of the current data first if you might need it.",
-      )
-    ) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: "Replace everything with this backup?",
+      message:
+        `Backup from ${taken}, with ${counts(backup)}.\n\n` +
+        "Everything recorded since will be lost. Download a backup of the current data first if you might need it.",
+      confirmLabel: "Replace everything",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setBusy("restore");
     const error = await replaceAllData(backup, `Restored a backup from ${taken}`);
     setBusy(null);
@@ -92,7 +94,13 @@ export function BackupSettings() {
   }
 
   async function sample() {
-    if (!confirm("Replace everything in the shop with the sample data? The current data will be lost.")) return;
+    const confirmed = await confirmDialog({
+      title: "Replace everything with the sample data?",
+      message: "The current toys, transactions and expenses will be lost.",
+      confirmLabel: "Load sample data",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     setBusy("sample");
     const error = await loadSampleData();
     setBusy(null);
@@ -101,8 +109,20 @@ export function BackupSettings() {
   }
 
   async function clear() {
-    if (!confirm("Delete every toy, transaction and expense? This can't be undone.")) return;
-    if (!confirm("Are you sure? Download a backup first if you might need this data.")) return;
+    const first = await confirmDialog({
+      title: "Delete every toy, transaction and expense?",
+      message: "This can't be undone.",
+      confirmLabel: "Continue",
+      tone: "danger",
+    });
+    if (!first) return;
+    const second = await confirmDialog({
+      title: "Are you sure?",
+      message: "Download a backup first if you might need this data.",
+      confirmLabel: "Delete everything",
+      tone: "danger",
+    });
+    if (!second) return;
     setBusy("clear");
     const error = await clearAllData();
     setBusy(null);
