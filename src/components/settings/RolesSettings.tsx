@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRole, deleteRole, listPeople, listRoles, updateRole, type Role, type RoleInput } from "@/lib/admin";
 import { ACTION_LABEL, PERMISSION_GROUPS, type Action, type Permission } from "@/lib/permissions";
+import { confirmDialog } from "../confirm";
 import { toast } from "../toast";
 import { Badge, Button, Field, FormError, Modal, ModalActions, inputCls } from "../ui";
 import { Section, SettingsStack } from "./parts";
@@ -33,11 +34,16 @@ export function RolesSettings() {
 
   async function remove(role: Role) {
     const n = members.get(role.id) ?? 0;
-    const warning =
-      n > 0
-        ? `\n\n${n} ${n === 1 ? "person has" : "people have"} this role and will lose access until you give them another one.`
-        : "";
-    if (!confirm(`Delete the role "${role.name}"?${warning}`)) return;
+    const confirmed = await confirmDialog({
+      title: `Delete the role "${role.name}"?`,
+      message:
+        n > 0
+          ? `${n} ${n === 1 ? "person has" : "people have"} this role and will lose access until you give them another one.`
+          : "No one has this role.",
+      confirmLabel: "Delete role",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     try {
       await deleteRole(role.id);
       toast({ tone: "success", title: "Role deleted", message: role.name });

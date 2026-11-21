@@ -23,6 +23,7 @@ import {
   StatCard,
   inputCls,
 } from "./ui";
+import { confirmDialog } from "./confirm";
 import { FilterPanel } from "./FilterPanel";
 import { Pagination, usePagination } from "./Pagination";
 import { ShopLoading } from "./status";
@@ -78,10 +79,15 @@ function ExpensesView({ data }: { data: ShopData }) {
   );
   const filtersActive = q !== "" || categories.length > 0 || !!from || !!to;
 
-  function remove(e: Expense) {
-    if (confirm(`Delete the ${money(e.amount, currency)} expense for "${e.description || e.vendor}"?`)) {
-      deleteExpense(e.id);
-    }
+  async function remove(e: Expense) {
+    const what = e.description || e.vendor;
+    const confirmed = await confirmDialog({
+      title: "Delete this expense?",
+      message: `${money(e.amount, currency)}${what ? ` for "${what}"` : ""}.`,
+      confirmLabel: "Delete expense",
+      tone: "danger",
+    });
+    if (confirmed) deleteExpense(e.id);
   }
 
   return (

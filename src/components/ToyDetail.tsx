@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatDate, money } from "@/lib/format";
 import { deleteToy } from "@/lib/store";
 import { CATEGORY_EMOJI, costValue, retailValue, totalStock, type Toy } from "@/lib/types";
+import { confirmDialog } from "./confirm";
 import { ImageCarousel } from "./images";
 import { StockBadge } from "./toy-parts";
 import { ToyForm } from "./ToyForm";
@@ -26,11 +27,16 @@ export function ToyDetail({
   const [editing, setEditing] = useState(false);
   const can = useCan();
 
-  function remove() {
-    if (confirm(`Delete "${toy.name}" from inventory? Past transactions are kept.`)) {
-      deleteToy(toy.id);
-      onClose();
-    }
+  async function remove() {
+    const confirmed = await confirmDialog({
+      title: `Delete "${toy.name}"?`,
+      message: "It will be removed from the inventory, with its pictures. Past transactions are kept.",
+      confirmLabel: "Delete toy",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    deleteToy(toy.id);
+    onClose();
   }
 
   return (

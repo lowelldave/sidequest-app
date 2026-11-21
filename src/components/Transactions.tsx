@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { formatDate, money } from "@/lib/format";
 import { downloadInvoice, invoiceNumber } from "@/lib/invoice";
 import { deleteTransaction, useShop } from "@/lib/store";
+import { confirmDialog } from "./confirm";
 import { FilterPanel } from "./FilterPanel";
 import { Pagination, usePagination } from "./Pagination";
 import { TransactionForm } from "./TransactionForm";
@@ -132,43 +133,45 @@ function TransactionsView({ data }: { data: ShopData }) {
     }
   }
 
-  function remove(t: Transaction) {
-    if (
-      confirm(
-        `Delete this ${t.type} of ${t.quantity} × ${t.toyName} (${t.quality})? Stock will be adjusted back.`,
-      )
-    ) {
-      // Keep the details open on what's left of the same sale or delivery, if anything.
-      if (viewingId === t.id) {
-        const rest = groupOf(t).filter((x) => x.id !== t.id);
-        setViewingId(rest[0]?.id ?? null);
-      }
-      deleteTransaction(t.id);
-      toast({
-        tone: "success",
-        title: "Transaction deleted",
-        message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock adjusted back.`,
-      });
+  async function remove(t: Transaction) {
+    const confirmed = await confirmDialog({
+      title: `Delete this ${t.type}?`,
+      message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock will be adjusted back.`,
+      confirmLabel: "Delete transaction",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    // Keep the details open on what's left of the same sale or delivery, if anything.
+    if (viewingId === t.id) {
+      const rest = groupOf(t).filter((x) => x.id !== t.id);
+      setViewingId(rest[0]?.id ?? null);
     }
+    deleteTransaction(t.id);
+    toast({
+      tone: "success",
+      title: "Transaction deleted",
+      message: `${t.quantity} × ${t.toyName} (${t.quality}). Stock adjusted back.`,
+    });
   }
 
   /** Deletes a whole row: every toy of the sale or delivery. */
-  function removeGroup(group: Transaction[]) {
+  async function removeGroup(group: Transaction[]) {
     if (group.length === 1) return remove(group[0]);
     const t = group[0];
-    if (
-      confirm(
-        `Delete this ${t.type} of ${group.length} toys (${invoiceNumber(t)})? Stock will be adjusted back for all of them.`,
-      )
-    ) {
-      if (viewingId && group.some((x) => x.id === viewingId)) setViewingId(null);
-      for (const x of group) deleteTransaction(x.id);
-      toast({
-        tone: "success",
-        title: "Transaction deleted",
-        message: `${invoiceNumber(t)}: ${group.length} toys. Stock adjusted back.`,
-      });
-    }
+    const confirmed = await confirmDialog({
+      title: `Delete this ${t.type}?`,
+      message: `${invoiceNumber(t)}: ${group.length} toys. Stock will be adjusted back for all of them.`,
+      confirmLabel: "Delete transaction",
+      tone: "danger",
+    });
+    if (!confirmed) return;
+    if (viewingId && group.some((x) => x.id === viewingId)) setViewingId(null);
+    for (const x of group) deleteTransaction(x.id);
+    toast({
+      tone: "success",
+      title: "Transaction deleted",
+      message: `${invoiceNumber(t)}: ${group.length} toys. Stock adjusted back.`,
+    });
   }
 
   return (

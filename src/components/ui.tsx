@@ -31,13 +31,16 @@ export function PasswordInput({ className = "", ...props }: Omit<InputHTMLAttrib
   );
 }
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "destructive";
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
   primary: "bg-accent text-accent-fg hover:opacity-90",
   secondary: "border border-line bg-surface text-foreground hover:bg-surface-2",
   ghost: "text-muted hover:bg-surface-2 hover:text-foreground",
+  // Red text: for a Delete button that sits among other controls.
   danger: "text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50",
+  // Solid red: the button that confirms something that can't be undone.
+  destructive: "bg-red-700 text-white hover:bg-red-800 dark:bg-red-600 dark:hover:bg-red-500",
 };
 
 export function Button({

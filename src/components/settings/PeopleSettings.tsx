@@ -15,6 +15,7 @@ import {
   type Role,
 } from "@/lib/admin";
 import { Avatar } from "../Avatar";
+import { confirmDialog } from "../confirm";
 import { toast } from "../toast";
 import { Badge, Button, Chip, Field, FormError, Modal, ModalActions, inputCls } from "../ui";
 import { Section } from "./parts";
@@ -53,13 +54,13 @@ export function PeopleSettings() {
   }
 
   async function remove(person: Person) {
-    if (
-      !confirm(
-        `Remove ${displayName(person)}'s account? They won't be able to sign in. What they recorded stays in the shop.`,
-      )
-    ) {
-      return;
-    }
+    const confirmed = await confirmDialog({
+      title: `Remove ${displayName(person)}'s account?`,
+      message: "They won't be able to sign in. What they recorded stays in the shop.",
+      confirmLabel: "Remove account",
+      tone: "danger",
+    });
+    if (!confirmed) return;
     try {
       await removePerson(person.id);
       toast({ tone: "success", title: "Account removed", message: displayName(person) });

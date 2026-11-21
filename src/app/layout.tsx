@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { Branding } from "@/components/Branding";
+import { ConfirmHost } from "@/components/confirm";
 import { SyncErrorBanner } from "@/components/status";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Toaster } from "@/components/toast";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AppShell>{children}</AppShell>
         <ThemeToggle />
         <Toaster />
+        <ConfirmHost />
         <SyncErrorBanner />
       </body>
     </html>
