@@ -322,14 +322,17 @@ function InventoryView({ data }: { data: ShopData }) {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
-                  {/* The name is the button; its ::after stretches over the whole row. */}
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(t.id)}
-                    className="line-clamp-2 min-w-0 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
-                  >
-                    {t.name}
-                  </button>
+                  <div className="min-w-0">
+                    {/* The name is the button; its ::after stretches over the whole row. */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(t.id)}
+                      className="line-clamp-2 text-left text-sm leading-snug font-medium after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
+                    >
+                      {t.name}
+                    </button>
+                    {t.sku && <p className="mt-0.5 truncate text-xs text-muted">{t.sku}</p>}
+                  </div>
                   <p className="shrink-0 text-sm font-semibold whitespace-nowrap tabular-nums">
                     {priceText(...priceRange(t), currency)}
                   </p>
