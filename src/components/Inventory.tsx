@@ -18,6 +18,7 @@ import {
   type StockStatus,
   type Toy,
 } from "@/lib/types";
+import { ImportToys } from "./ImportToys";
 import { ToyCover } from "./images";
 import { ToyDetail } from "./ToyDetail";
 import { ToyForm } from "./ToyForm";
@@ -65,6 +66,7 @@ function InventoryView({ data }: { data: ShopData }) {
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   // The toy open in the details modal. Kept as an id so the modal always shows current data.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = data.toys.find((t) => t.id === selectedId);
@@ -111,9 +113,12 @@ function InventoryView({ data }: { data: ShopData }) {
         subtitle="Every toy in the shop. Select one to see its pictures and details."
         action={
           can("inventory.create") && (
-            <Button variant="primary" onClick={() => setAdding(true)}>
-              + Add toy
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setImporting(true)}>Import</Button>
+              <Button variant="primary" onClick={() => setAdding(true)}>
+                + Add toy
+              </Button>
+            </div>
           )
         }
       />
@@ -354,6 +359,8 @@ function InventoryView({ data }: { data: ShopData }) {
           <ToyForm toy={null} onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
         </Modal>
       )}
+
+      {importing && <ImportToys toys={data.toys} currency={currency} onClose={() => setImporting(false)} />}
 
       {selected && (
         <ToyDetail
