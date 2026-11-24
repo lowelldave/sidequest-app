@@ -26,11 +26,26 @@ export interface QualityStock {
   stock: number;
 }
 
+/** Where a toy's stock is: in the shop, on its way, or with an outside supplier. */
+export const AVAILABILITIES = ["on-hand", "incoming", "outsource"] as const;
+export type Availability = (typeof AVAILABILITIES)[number];
+
+export const AVAILABILITY_LABEL: Record<Availability, string> = {
+  "on-hand": "On-hand",
+  incoming: "Incoming",
+  outsource: "Outsource",
+};
+
 export interface Toy {
   id: string;
   name: string;
   sku: string;
   manufacturer: string;
+  /** Optional line or franchise the toy belongs to; searched from the inventory page. */
+  series: string;
+  /** False for toys that are kept but not sold. */
+  forSale: boolean;
+  availability: Availability;
   category: Category;
   /** Ids of the toy's pictures, first one is the cover. The files are stored by lib/images.ts. */
   images: string[];

@@ -46,7 +46,7 @@ export function ToyPicker({
     const sorted = [...toys].sort((a, b) => a.name.localeCompare(b.name));
     if (words.length === 0) return sorted;
     return sorted.filter((t) => {
-      const haystack = `${t.name} ${t.manufacturer} ${t.sku}`.toLowerCase();
+      const haystack = `${t.name} ${t.manufacturer} ${t.series} ${t.sku}`.toLowerCase();
       return words.every((w) => haystack.includes(w));
     });
   }, [toys, query]);

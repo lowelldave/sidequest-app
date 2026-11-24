@@ -5,6 +5,8 @@ import { useState } from "react";
 import { money } from "@/lib/format";
 import { setInventoryView, useShop } from "@/lib/store";
 import {
+  AVAILABILITIES,
+  AVAILABILITY_LABEL,
   CATEGORIES,
   CATEGORY_EMOJI,
   QUALITIES,
@@ -12,6 +14,7 @@ import {
   retailValue,
   stockStatus,
   totalStock,
+  type Availability,
   type Category,
   type Quality,
   type ShopData,
@@ -24,7 +27,7 @@ import { Pagination, usePagination } from "./Pagination";
 import { ToyCover } from "./images";
 import { ToyDetail } from "./ToyDetail";
 import { ToyForm } from "./ToyForm";
-import { QualityBadges, StockBadge, costRange, priceText } from "./toy-parts";
+import { AvailabilityBadge, NotForSaleBadge, QualityBadges, StockBadge, costRange, priceText } from "./toy-parts";
 import { Button, Chip, EmptyState, Field, Modal, PageHeader, inputCls } from "./ui";
 import { ShopLoading } from "./status";
 
@@ -64,6 +67,8 @@ function InventoryView({ data }: { data: ShopData }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [qualities, setQualities] = useState<Quality[]>([]);
   const [stock, setStock] = useState<StockStatus | "all">("all");
+  const [saleFilter, setSaleFilter] = useState<"all" | "sale" | "not-sale">("all");
+  const [availabilities, setAvailabilities] = useState<Availability[]>([]);
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState<Sort>("name");
@@ -77,7 +82,9 @@ function InventoryView({ data }: { data: ShopData }) {
   const filtered = data.toys
     .filter(
       (t) =>
-        (!q || `${t.name} ${t.sku} ${t.manufacturer} ${t.notes}`.toLowerCase().includes(q)) &&
+        (!q || `${t.name} ${t.sku} ${t.manufacturer} ${t.series} ${t.notes}`.toLowerCase().includes(q)) &&
+        (saleFilter === "all" || (saleFilter === "sale") === t.forSale) &&
+        (availabilities.length === 0 || availabilities.includes(t.availability)) &&
         (categories.length === 0 || categories.includes(t.category)) &&
         // A toy matches a quality or a price range if any one of its qualities does.
         (qualities.length === 0 || t.qualities.some((x) => qualities.includes(x.quality))) &&
@@ -95,7 +102,7 @@ function InventoryView({ data }: { data: ShopData }) {
   const paging = usePagination(filtered, {
     storageKey: "toyshop:page-size:inventory",
     anchorId: "inventory-list",
-    resetKey: JSON.stringify([q, categories, qualities, stock, minPrice, maxPrice, sort]),
+    resetKey: JSON.stringify([q, categories, qualities, stock, saleFilter, availabilities, minPrice, maxPrice, sort]),
   });
 
   const filtersActive =
@@ -103,6 +110,8 @@ function InventoryView({ data }: { data: ShopData }) {
     categories.length > 0 ||
     qualities.length > 0 ||
     stock !== "all" ||
+    saleFilter !== "all" ||
+    availabilities.length > 0 ||
     minPrice !== "" ||
     maxPrice !== "";
 
@@ -111,6 +120,8 @@ function InventoryView({ data }: { data: ShopData }) {
     setCategories([]);
     setQualities([]);
     setStock("all");
+    setSaleFilter("all");
+    setAvailabilities([]);
     setMinPrice("");
     setMaxPrice("");
   }
@@ -136,7 +147,15 @@ function InventoryView({ data }: { data: ShopData }) {
         storageKey="toyshop:filters-open:inventory"
         onReset={resetFilters}
         activeCount={
-          [q !== "", categories.length > 0, qualities.length > 0, stock !== "all", minPrice !== "" || maxPrice !== ""].filter(
+          [
+            q !== "",
+            categories.length > 0,
+            qualities.length > 0,
+            stock !== "all",
+            saleFilter !== "all",
+            availabilities.length > 0,
+            minPrice !== "" || maxPrice !== "",
+          ].filter(
             Boolean,
           ).length
         }
@@ -146,7 +165,7 @@ function InventoryView({ data }: { data: ShopData }) {
             <input
               type="search"
               className={inputCls}
-              placeholder="Name, SKU, manufacturer or notes"
+              placeholder="Name, SKU, manufacturer, series or notes"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -161,6 +180,17 @@ function InventoryView({ data }: { data: ShopData }) {
               <option value="in">In stock</option>
               <option value="low">Low stock</option>
               <option value="out">Out of stock</option>
+            </select>
+          </Field>
+          <Field label="Sale status">
+            <select
+              className={inputCls}
+              value={saleFilter}
+              onChange={(e) => setSaleFilter(e.target.value as "all" | "sale" | "not-sale")}
+            >
+              <option value="all">Any</option>
+              <option value="sale">For sale</option>
+              <option value="not-sale">Not for sale</option>
             </select>
           </Field>
           <Field label="Min price">
@@ -209,6 +239,21 @@ function InventoryView({ data }: { data: ShopData }) {
               >
                 <span aria-hidden="true">{CATEGORY_EMOJI[c]} </span>
                 {c}
+              </Chip>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <p className="mb-1.5 text-xs font-medium text-muted">Availability</p>
+          <div className="flex flex-wrap gap-2">
+            {AVAILABILITIES.map((a) => (
+              <Chip
+                key={a}
+                active={availabilities.includes(a)}
+                onClick={() => setAvailabilities(toggle(availabilities, a))}
+              >
+                {AVAILABILITY_LABEL[a]}
               </Chip>
             ))}
           </div>
@@ -291,15 +336,19 @@ function InventoryView({ data }: { data: ShopData }) {
                 >
                   {t.name}
                 </button>
-                <p className="mt-0.5 hidden text-xs text-muted sm:block">{t.manufacturer || "No manufacturer"}</p>
+                <p className="mt-0.5 hidden text-xs text-muted sm:block">
+                  {[t.manufacturer || "No manufacturer", t.series].filter(Boolean).join(" · ")}
+                </p>
                 <p className="hidden text-xs text-muted sm:block">
                   {t.category} · {t.sku}
                 </p>
                 <div className="mt-2 hidden flex-wrap gap-1.5 sm:flex">
                   <QualityBadges toy={t} />
                 </div>
-                <div className="sm:mt-1.5">
+                <div className="flex flex-wrap gap-1 sm:mt-1.5">
                   <StockBadge toy={t} />
+                  {t.availability !== "on-hand" && <AvailabilityBadge toy={t} />}
+                  <NotForSaleBadge toy={t} />
                 </div>
                 <p className="mt-auto pt-1 text-base font-semibold whitespace-nowrap tabular-nums sm:pt-3 sm:text-lg">
                   {priceText(...priceRange(t), currency)}
@@ -384,7 +433,10 @@ function InventoryView({ data }: { data: ShopData }) {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3">{t.manufacturer || <span className="text-muted">—</span>}</td>
+                  <td className="px-4 py-3">
+                    {t.manufacturer || <span className="text-muted">—</span>}
+                    {t.series && <p className="text-xs text-muted">{t.series}</p>}
+                  </td>
                   <td className="px-4 py-3">{t.category}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
@@ -398,7 +450,11 @@ function InventoryView({ data }: { data: ShopData }) {
                     {priceText(...costRange(t), currency)}
                   </td>
                   <td className="px-4 py-3">
-                    <StockBadge toy={t} />
+                    <div className="flex flex-wrap gap-1">
+                      <StockBadge toy={t} />
+                      {t.availability !== "on-hand" && <AvailabilityBadge toy={t} />}
+                      <NotForSaleBadge toy={t} />
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {money(retailValue(t), currency)}
