@@ -1,5 +1,5 @@
 import { money } from "@/lib/format";
-import { stockStatus, totalStock, type Toy } from "@/lib/types";
+import { AVAILABILITY_LABEL, stockStatus, totalStock, type Availability, type Toy } from "@/lib/types";
 import { Badge, QUALITY_TONE } from "./ui";
 
 /** Overall stock level of a toy across all its qualities. */
@@ -8,6 +8,22 @@ export function StockBadge({ toy }: { toy: Toy }) {
   if (status === "out") return <Badge tone="red">Out of stock</Badge>;
   if (status === "low") return <Badge tone="amber">Low · {totalStock(toy)}</Badge>;
   return <Badge tone="green">In stock · {totalStock(toy)}</Badge>;
+}
+
+const AVAILABILITY_TONE: Record<Availability, "green" | "blue" | "violet"> = {
+  "on-hand": "green",
+  incoming: "blue",
+  outsource: "violet",
+};
+
+/** Where the toy's stock is. */
+export function AvailabilityBadge({ toy }: { toy: Toy }) {
+  return <Badge tone={AVAILABILITY_TONE[toy.availability]}>{AVAILABILITY_LABEL[toy.availability]}</Badge>;
+}
+
+/** Shown only for toys that are kept but not sold. */
+export function NotForSaleBadge({ toy }: { toy: Toy }) {
+  return toy.forSale ? null : <Badge tone="amber">Not for sale</Badge>;
 }
 
 /**

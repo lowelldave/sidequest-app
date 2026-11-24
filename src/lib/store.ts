@@ -8,6 +8,7 @@ import { createSeed } from "./seed";
 import { getShopSettings, subscribeShopSettings } from "./shop";
 import { getSupabase } from "./supabase/client";
 import type {
+  Availability,
   Category,
   Expense,
   ExpenseCategory,
@@ -146,6 +147,9 @@ type ToyRow = {
   name: string;
   sku: string;
   manufacturer: string;
+  series: string;
+  for_sale: boolean;
+  availability: Availability;
   category: Category;
   images: string[];
   reorder_level: number;
@@ -186,6 +190,9 @@ function toToy(row: ToyRow): Toy {
     name: row.name,
     sku: row.sku,
     manufacturer: row.manufacturer,
+    series: row.series ?? "",
+    forSale: row.for_sale ?? true,
+    availability: row.availability ?? "on-hand",
     category: row.category,
     images: row.images ?? [],
     qualities: [...row.toy_qualities]
@@ -340,6 +347,9 @@ function toyPayload(id: string, input: ToyInput) {
     name: input.name,
     sku: input.sku,
     manufacturer: input.manufacturer,
+    series: input.series,
+    for_sale: input.forSale,
+    availability: input.availability,
     category: input.category,
     images: input.images,
     reorder_level: input.reorderLevel,
@@ -745,6 +755,9 @@ function seedRows(seed: ShopData): DataRows {
       name: t.name,
       sku: t.sku,
       manufacturer: t.manufacturer,
+      series: t.series,
+      for_sale: t.forSale,
+      availability: t.availability,
       category: t.category,
       images: t.images,
       reorder_level: t.reorderLevel,
