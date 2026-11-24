@@ -5,14 +5,18 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { removeImages } from "@/lib/images";
 import { addToy, updateToy, type ToyInput } from "@/lib/store";
 import {
+  AVAILABILITIES,
+  AVAILABILITY_LABEL,
   CATEGORIES,
   QUALITIES,
+  type Availability,
   type Category,
   type Quality,
   type QualityStock,
   type Toy,
 } from "@/lib/types";
 import { ImageField } from "./images";
+import { toast } from "./toast";
 import { Button, Field, FormError, ModalActions, inputCls } from "./ui";
 
 type QualityRow = { quality: Quality; price: string; cost: string; stock: string };
@@ -86,6 +90,9 @@ export function ToyForm({
       name: text("name"),
       sku: text("sku"),
       manufacturer: text("manufacturer"),
+      series: text("series"),
+      forSale: fd.get("forSale") === "on",
+      availability: text("availability") as Availability,
       category: text("category") as Category,
       images,
       qualities,
@@ -108,6 +115,7 @@ export function ToyForm({
     saved.current = true;
     if (toy) updateToy(toy.id, input);
     else addToy(input);
+    toast({ tone: "success", title: toy ? "Toy updated" : "Toy added to inventory", message: input.name });
     // Pictures that were taken off a saved toy can go now that it's saved.
     void removeImages((toy?.images ?? []).filter((id) => !images.includes(id)));
     onDone();
@@ -142,7 +150,7 @@ export function ToyForm({
       <Field label="SKU">
         <input name="sku" className={inputCls} defaultValue={toy?.sku} placeholder="Optional" />
       </Field>
-      <Field label="Manufacturer" className="col-span-2">
+      <Field label="Manufacturer">
         <input
           name="manufacturer"
           className={inputCls}
@@ -150,6 +158,27 @@ export function ToyForm({
           placeholder="Optional"
         />
       </Field>
+      <Field label="Series">
+        <input name="series" className={inputCls} defaultValue={toy?.series} placeholder="Optional" />
+      </Field>
+      <Field label="Availability">
+        <select name="availability" className={inputCls} defaultValue={toy?.availability ?? "on-hand"}>
+          {AVAILABILITIES.map((a) => (
+            <option key={a} value={a}>
+              {AVAILABILITY_LABEL[a]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <label className="flex items-center gap-2 self-end pb-2 text-sm">
+        <input
+          type="checkbox"
+          name="forSale"
+          defaultChecked={toy?.forSale ?? true}
+          className="size-4 accent-[var(--accent)]"
+        />
+        For sale
+      </label>
 
       <fieldset className="col-span-2 space-y-2">
         <legend className="mb-1 text-xs font-medium text-muted">

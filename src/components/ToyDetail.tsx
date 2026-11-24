@@ -7,7 +7,8 @@ import { deleteToy } from "@/lib/store";
 import { CATEGORY_EMOJI, costValue, retailValue, totalStock, type Toy } from "@/lib/types";
 import { confirmDialog } from "./confirm";
 import { ImageCarousel } from "./images";
-import { StockBadge } from "./toy-parts";
+import { toast } from "./toast";
+import { AvailabilityBadge, NotForSaleBadge, StockBadge } from "./toy-parts";
 import { ToyForm } from "./ToyForm";
 import { Badge, Button, Modal, ModalActions, QUALITY_TONE } from "./ui";
 
@@ -36,6 +37,7 @@ export function ToyDetail({
     });
     if (!confirmed) return;
     deleteToy(toy.id);
+    toast({ tone: "success", title: "Toy deleted", message: toy.name });
     onClose();
   }
 
@@ -57,12 +59,15 @@ export function ToyDetail({
                     {toy.category}
                   </Badge>
                   <StockBadge toy={toy} />
+                  <AvailabilityBadge toy={toy} />
+                  <NotForSaleBadge toy={toy} />
                 </div>
               </div>
 
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[
                   ["SKU", toy.sku || "—"],
+                  ["Series", toy.series || "—"],
                   ["Total in stock", String(totalStock(toy))],
                   ["Stock value (retail)", money(retailValue(toy), currency)],
                   ["Stock value (cost)", money(costValue(toy), currency)],
